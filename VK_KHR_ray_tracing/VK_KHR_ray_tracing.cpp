@@ -11,12 +11,12 @@
 #include <iostream>
 #include <vector>
 
-#define ASSERT_VK_RESULT(r)                                                \
-  {                                                                        \
-    VkResult result = (r);                                                 \
-    if (result != VK_SUCCESS) {                                            \
-      std::cout << "Vulkan Assertion failed in " << __LINE__ << std::endl; \
-    }                                                                      \
+#define ASSERT_VK_RESULT(r)                                                     \
+  {                                                                             \
+    VkResult result = (r);                                                      \
+    if (result != VK_SUCCESS) {                                                 \
+      std::cout << "Vulkan Assertion failed in Line " << __LINE__ << std::endl; \
+    }                                                                           \
   }
 
 #define RESOLVE_VK_INSTANCE_PFN(instance, funcName)                    \
@@ -157,6 +157,23 @@ void DrawFrame() {
 }
 
 int main() {
+  // clang-format off
+  PFN_vkGetPhysicalDeviceSurfaceSupportKHR vkGetPhysicalDeviceSurfaceSupportKHR;
+  PFN_vkGetPhysicalDeviceSurfaceFormatsKHR vkGetPhysicalDeviceSurfaceFormatsKHR;
+
+  PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR;
+  PFN_vkGetSwapchainImagesKHR vkGetSwapchainImagesKHR;
+
+  PFN_vkCreateAccelerationStructureKHR vkCreateAccelerationStructureKHR;
+  PFN_vkCreateRayTracingPipelinesKHR vkCreateRayTracingPipelinesKHR;
+  PFN_vkBindAccelerationStructureMemoryKHR vkBindAccelerationStructureMemoryKHR;
+  PFN_vkGetAccelerationStructureMemoryRequirementsKHR vkGetAccelerationStructureMemoryRequirementsKHR;
+  PFN_vkCmdBuildAccelerationStructureKHR vkCmdBuildAccelerationStructureKHR;
+  PFN_vkDestroyAccelerationStructureKHR vkDestroyAccelerationStructureKHR;
+  PFN_vkGetRayTracingShaderGroupHandlesKHR vkGetRayTracingShaderGroupHandlesKHR;
+  PFN_vkCmdTraceRaysKHR vkCmdTraceRaysKHR;
+  // clang-format on
+
   TCHAR dest[MAX_PATH];
   const DWORD length = GetModuleFileName(nullptr, dest, MAX_PATH);
   PathCchRemoveFileSpec(dest, MAX_PATH);
@@ -250,7 +267,61 @@ int main() {
   std::vector<VkPhysicalDevice> devices(deviceCount);
   ASSERT_VK_RESULT(
       vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data()));
+  // TODO: prefer discrete and extension compatible device
   physicalDevice = devices[0];
+
+  VkPhysicalDeviceProperties deviceProperties = {};
+  vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
+  std::cout << "GPU: " << deviceProperties.deviceName << std::endl;
+
+  const float queuePriority = 0.0f;
+
+  VkDeviceQueueCreateInfo deviceQueueInfo = {};
+  deviceQueueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+  deviceQueueInfo.pNext = nullptr;
+  deviceQueueInfo.queueFamilyIndex = 0;
+  deviceQueueInfo.queueCount = 1;
+  deviceQueueInfo.pQueuePriorities = &queuePriority;
+
+  // clang-format off
+  std::vector<const char*> deviceExtensions({
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    VK_KHR_RAY_TRACING_EXTENSION_NAME,
+    VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
+    VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME
+  });
+  // clang-format on
+
+  VkDeviceCreateInfo deviceInfo = {};
+  deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+  deviceInfo.pNext = nullptr;
+  deviceInfo.queueCreateInfoCount = 1;
+  deviceInfo.pQueueCreateInfos = &deviceQueueInfo;
+  deviceInfo.enabledExtensionCount = deviceExtensions.size();
+  deviceInfo.ppEnabledExtensionNames = deviceExtensions.data();
+  deviceInfo.pEnabledFeatures = new VkPhysicalDeviceFeatures();
+
+  ASSERT_VK_RESULT(
+      vkCreateDevice(physicalDevice, &deviceInfo, nullptr, &device));
+
+  vkGetDeviceQueue(device, 0, 0, &queue);
+
+  // clang-format off
+  RESOLVE_VK_INSTANCE_PFN(instance, vkGetPhysicalDeviceSurfaceSupportKHR);
+  RESOLVE_VK_INSTANCE_PFN(instance, vkGetPhysicalDeviceSurfaceFormatsKHR);
+
+  RESOLVE_VK_DEVICE_PFN(device, vkCreateSwapchainKHR);
+  RESOLVE_VK_DEVICE_PFN(device, vkGetSwapchainImagesKHR);
+
+  RESOLVE_VK_DEVICE_PFN(device, vkCreateAccelerationStructureKHR);
+  RESOLVE_VK_DEVICE_PFN(device, vkCreateRayTracingPipelinesKHR);
+  RESOLVE_VK_DEVICE_PFN(device, vkBindAccelerationStructureMemoryKHR);
+  RESOLVE_VK_DEVICE_PFN(device, vkGetAccelerationStructureMemoryRequirementsKHR);
+  RESOLVE_VK_DEVICE_PFN(device, vkCmdBuildAccelerationStructureKHR);
+  RESOLVE_VK_DEVICE_PFN(device, vkDestroyAccelerationStructureKHR);
+  RESOLVE_VK_DEVICE_PFN(device, vkGetRayTracingShaderGroupHandlesKHR);
+  RESOLVE_VK_DEVICE_PFN(device, vkCmdTraceRaysKHR);
+  // clang-format on
 
   VkWin32SurfaceCreateInfoKHR surfaceCreateInfo;
   surfaceCreateInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
@@ -261,12 +332,6 @@ int main() {
 
   ASSERT_VK_RESULT(
       vkCreateWin32SurfaceKHR(instance, &surfaceCreateInfo, nullptr, &surface));
-
-  PFN_vkGetPhysicalDeviceSurfaceSupportKHR vkGetPhysicalDeviceSurfaceSupportKHR;
-  RESOLVE_VK_INSTANCE_PFN(instance, vkGetPhysicalDeviceSurfaceSupportKHR);
-
-  PFN_vkGetPhysicalDeviceSurfaceFormatsKHR vkGetPhysicalDeviceSurfaceFormatsKHR;
-  RESOLVE_VK_INSTANCE_PFN(instance, vkGetPhysicalDeviceSurfaceFormatsKHR);
 
   uint32_t queueFamilyCount = 0;
   vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
@@ -289,32 +354,6 @@ int main() {
     std::cout << "No surface rendering support" << std::endl;
     return EXIT_FAILURE;
   }
-
-  const float queuePriority = 0.0f;
-
-  VkDeviceQueueCreateInfo deviceQueueInfo = {};
-  deviceQueueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-  deviceQueueInfo.pNext = nullptr;
-  deviceQueueInfo.queueFamilyIndex = 0;
-  deviceQueueInfo.queueCount = 1;
-  deviceQueueInfo.pQueuePriorities = &queuePriority;
-
-  std::vector<const char*> deviceExtensions(
-      {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_RAY_TRACING_EXTENSION_NAME});
-
-  VkDeviceCreateInfo deviceInfo = {};
-  deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-  deviceInfo.pNext = nullptr;
-  deviceInfo.queueCreateInfoCount = 1;
-  deviceInfo.pQueueCreateInfos = &deviceQueueInfo;
-  deviceInfo.enabledExtensionCount = deviceExtensions.size();
-  deviceInfo.ppEnabledExtensionNames = deviceExtensions.data();
-  deviceInfo.pEnabledFeatures = new VkPhysicalDeviceFeatures();
-
-  ASSERT_VK_RESULT(
-      vkCreateDevice(physicalDevice, &deviceInfo, nullptr, &device));
-
-  vkGetDeviceQueue(device, 0, 0, &queue);
 
   VkCommandPoolCreateInfo cmdPoolInfo = {};
   cmdPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -344,14 +383,8 @@ int main() {
   swapchainInfo.clipped = VK_TRUE;
   swapchainInfo.oldSwapchain = nullptr;
 
-  PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR;
-  RESOLVE_VK_DEVICE_PFN(device, vkCreateSwapchainKHR);
-
   ASSERT_VK_RESULT(
       vkCreateSwapchainKHR(device, &swapchainInfo, nullptr, &swapchain));
-
-  PFN_vkGetSwapchainImagesKHR vkGetSwapchainImagesKHR;
-  RESOLVE_VK_DEVICE_PFN(device, vkGetSwapchainImagesKHR);
 
   uint32_t amountOfImagesInSwapchain = 0;
   vkGetSwapchainImagesKHR(device, swapchain, &amountOfImagesInSwapchain,
@@ -407,6 +440,29 @@ int main() {
   std::vector<VkPipelineShaderStageCreateInfo> shaderStages = {
       shaderStageInfoVert, shaderStageInfoFrag};
 
+  // acquire RT properties
+  VkPhysicalDeviceRayTracingPropertiesKHR rayTracingProperties = {};
+  rayTracingProperties.sType =
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PROPERTIES_KHR;
+  rayTracingProperties.pNext = nullptr;
+
+  VkPhysicalDeviceProperties2 deviceProperties2 = {};
+  deviceProperties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+  deviceProperties2.pNext = &rayTracingProperties;
+  vkGetPhysicalDeviceProperties2(physicalDevice, &deviceProperties2);
+
+  // acquire RT features
+  VkPhysicalDeviceRayTracingFeaturesKHR rayTracingFeatures = {};
+  rayTracingFeatures.sType =
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_FEATURES_KHR;
+  rayTracingFeatures.pNext = nullptr;
+
+  VkPhysicalDeviceFeatures2 deviceFeatures2 = {};
+  deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+  deviceFeatures2.pNext = &rayTracingFeatures;
+  vkGetPhysicalDeviceFeatures2(physicalDevice, &deviceFeatures2);
+
+  // graphics pipeline
   VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
   vertexInputInfo.sType =
       VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
