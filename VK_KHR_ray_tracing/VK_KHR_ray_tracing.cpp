@@ -85,7 +85,9 @@ VkSemaphore semaphoreImageAvailable = VK_NULL_HANDLE;
 VkSemaphore semaphoreRenderingAvailable = VK_NULL_HANDLE;
 
 VkAccelerationStructureKHR bottomLevelAS = VK_NULL_HANDLE;
+uint64_t bottomLevelASHandle = 0;
 VkAccelerationStructureKHR topLevelAS = VK_NULL_HANDLE;
+uint64_t topLevelASHandle = 0;
 
 HWND window = NULL;
 HINSTANCE windowInstance;
@@ -167,6 +169,20 @@ AccelerationMemory CreateAccelerationMemory(VkAccelerationStructureKHR accelerat
     vkGetAccelerationStructureMemoryRequirementsKHR(device, &accelerationMemoryRequirements,
                                                     &memoryRequirements2);
 
+    VkBufferCreateInfo bufferInfo = {};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.pNext = nullptr;
+    bufferInfo.size = memoryRequirements2.memoryRequirements.size;
+    bufferInfo.usage =
+        VK_BUFFER_USAGE_RAY_TRACING_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    bufferInfo.queueFamilyIndexCount = 0;
+    bufferInfo.pQueueFamilyIndices = nullptr;
+    ASSERT_VK_RESULT(vkCreateBuffer(device, &bufferInfo, nullptr, &out.buffer));
+
+    VkMemoryRequirements memoryRequirements = {};
+    vkGetBufferMemoryRequirements(device, out.buffer, &memoryRequirements);
+
     VkMemoryAllocateFlagsInfo memAllocFlagsInfo = {};
     memAllocFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
     memAllocFlagsInfo.pNext = nullptr;
@@ -176,21 +192,11 @@ AccelerationMemory CreateAccelerationMemory(VkAccelerationStructureKHR accelerat
     VkMemoryAllocateInfo memAllocInfo = {};
     memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     memAllocInfo.pNext = &memAllocFlagsInfo;
-    memAllocInfo.allocationSize = memoryRequirements2.memoryRequirements.size;
-    memAllocInfo.memoryTypeIndex = FindMemoryType(
-        memoryRequirements2.memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    memAllocInfo.allocationSize = memoryRequirements.size;
+    memAllocInfo.memoryTypeIndex =
+        FindMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     ASSERT_VK_RESULT(vkAllocateMemory(device, &memAllocInfo, nullptr, &out.memory));
 
-    VkBufferCreateInfo bufferInfo = {};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.pNext = nullptr;
-    bufferInfo.size = memAllocInfo.allocationSize;
-    bufferInfo.usage =
-        VK_BUFFER_USAGE_RAY_TRACING_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    bufferInfo.queueFamilyIndexCount = 0;
-    bufferInfo.pQueueFamilyIndices = nullptr;
-    ASSERT_VK_RESULT(vkCreateBuffer(device, &bufferInfo, nullptr, &out.buffer));
     ASSERT_VK_RESULT(vkBindBufferMemory(device, out.buffer, out.memory, 0));
 
     VkBufferDeviceAddressInfoKHR bufferAddressInfo = {};
@@ -512,11 +518,11 @@ int main() {
         accelerationGeometry.geometry.triangles.pNext = nullptr;
         accelerationGeometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
         accelerationGeometry.geometry.triangles.vertexData.hostAddress =
-            reinterpret_cast<void*>(&vertices);
+            reinterpret_cast<void*>(vertices.data());
         accelerationGeometry.geometry.triangles.vertexStride = 3 * sizeof(float);
         accelerationGeometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
         accelerationGeometry.geometry.triangles.indexData.hostAddress =
-            reinterpret_cast<void*>(&indices);
+            reinterpret_cast<void*>(indices.data());
         accelerationGeometry.geometry.triangles.transformData.deviceAddress = VK_NULL_HANDLE;
 
         std::vector<VkAccelerationStructureGeometryKHR*> accelerationGeometries(
@@ -534,6 +540,138 @@ int main() {
         accelerationBuildGeometryInfo.update = VK_FALSE;
         accelerationBuildGeometryInfo.srcAccelerationStructure = VK_NULL_HANDLE;
         accelerationBuildGeometryInfo.dstAccelerationStructure = bottomLevelAS;
+        accelerationBuildGeometryInfo.geometryArrayOfPointers = VK_TRUE;
+        accelerationBuildGeometryInfo.geometryCount = 1;
+        accelerationBuildGeometryInfo.ppGeometries = accelerationGeometries.data();
+        accelerationBuildGeometryInfo.scratchData.deviceAddress = scratchMemory.memoryAddress;
+
+        VkAccelerationStructureDeviceAddressInfoKHR accelerationDeviceAddressInfo = {};
+        accelerationDeviceAddressInfo.sType =
+            VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
+        accelerationDeviceAddressInfo.pNext = nullptr;
+        accelerationDeviceAddressInfo.accelerationStructure = bottomLevelAS;
+
+        bottomLevelASHandle =
+            vkGetAccelerationStructureDeviceAddressKHR(device, &accelerationDeviceAddressInfo);
+
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+
+        VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
+        commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        commandBufferAllocateInfo.pNext = nullptr;
+        commandBufferAllocateInfo.commandPool = commandPool;
+        commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        commandBufferAllocateInfo.commandBufferCount = 1;
+        ASSERT_VK_RESULT(
+            vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, &commandBuffer));
+
+        VkCommandBufferBeginInfo commandBufferBeginInfo = {};
+        commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        commandBufferBeginInfo.pNext = nullptr;
+        commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
+
+        VkAccelerationStructureBuildOffsetInfoKHR accelerationBuildOffsetInfo = {};
+        accelerationBuildOffsetInfo.primitiveCount = 3;
+        accelerationBuildOffsetInfo.primitiveOffset = 0x0;
+        accelerationBuildOffsetInfo.firstVertex = 0;
+        accelerationBuildOffsetInfo.transformOffset = 0x0;
+
+        std::vector<VkAccelerationStructureBuildOffsetInfoKHR*> accelerationBuildOffsets = {
+            &accelerationBuildOffsetInfo};
+
+        vkCmdBuildAccelerationStructureKHR(commandBuffer, 1, &accelerationBuildGeometryInfo,
+                                           accelerationBuildOffsets.data());
+
+        ASSERT_VK_RESULT(vkEndCommandBuffer(commandBuffer));
+
+        VkSubmitInfo submitInfo = {};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.pNext = nullptr;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &commandBuffer;
+
+        VkFence fence = VK_NULL_HANDLE;
+        VkFenceCreateInfo fenceInfo = {};
+        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        fenceInfo.pNext = nullptr;
+
+        ASSERT_VK_RESULT(vkCreateFence(device, &fenceInfo, nullptr, &fence));
+        ASSERT_VK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, fence));
+        ASSERT_VK_RESULT(vkWaitForFences(device, 1, &fence, true, UINT64_MAX));
+
+        vkDestroyFence(device, fence, nullptr);
+        vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+    }
+
+    // create top-level container
+    {
+        VkAccelerationStructureCreateGeometryTypeInfoKHR accelerationCreateGeometryInfo = {};
+        accelerationCreateGeometryInfo.sType =
+            VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_GEOMETRY_TYPE_INFO_KHR;
+        accelerationCreateGeometryInfo.pNext = nullptr;
+        accelerationCreateGeometryInfo.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+        accelerationCreateGeometryInfo.maxPrimitiveCount = 128;
+        accelerationCreateGeometryInfo.indexType = VK_INDEX_TYPE_UINT32;
+        accelerationCreateGeometryInfo.maxVertexCount = 8;
+        accelerationCreateGeometryInfo.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+        accelerationCreateGeometryInfo.allowsTransforms = VK_TRUE;
+
+        VkAccelerationStructureCreateInfoKHR accelerationInfo = {};
+        accelerationInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+        accelerationInfo.pNext = nullptr;
+        accelerationInfo.compactedSize = 0;
+        accelerationInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+        accelerationInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+        accelerationInfo.maxGeometryCount = 1;
+        accelerationInfo.pGeometryInfos = &accelerationCreateGeometryInfo;
+        accelerationInfo.deviceAddress = VK_NULL_HANDLE;
+
+        ASSERT_VK_RESULT(
+            vkCreateAccelerationStructureKHR(device, &accelerationInfo, nullptr, &topLevelAS));
+
+        // clang-format off
+        std::vector<VkAccelerationStructureInstanceKHR> instances = {
+            {
+                {1.0f, 0.0f, 0.0, 0.0f, 0.0f, 1.0f, 0.0, 0.0f, 0.0f, 0.0f, 1.0, 0.0f},
+                 0,
+                 0xFF,
+                 0x0,
+                 VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
+                 bottomLevelASHandle
+            }
+        };
+        // clang-format on
+
+        VkAccelerationStructureGeometryKHR accelerationGeometry = {};
+        accelerationGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+        accelerationGeometry.pNext = nullptr;
+        accelerationGeometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+        accelerationGeometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+        accelerationGeometry.geometry = {};
+        accelerationGeometry.geometry.instances = {};
+        accelerationGeometry.geometry.instances.sType =
+            VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
+        accelerationGeometry.geometry.instances.pNext = nullptr;
+        accelerationGeometry.geometry.instances.arrayOfPointers = VK_FALSE;
+        accelerationGeometry.geometry.instances.data.hostAddress =
+            reinterpret_cast<void*>(instances.data());
+
+        std::vector<VkAccelerationStructureGeometryKHR*> accelerationGeometries(
+            {&accelerationGeometry});
+
+        AccelerationMemory scratchMemory = CreateAccelerationMemory(topLevelAS);
+
+        VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo = {};
+        accelerationBuildGeometryInfo.sType =
+            VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+        accelerationBuildGeometryInfo.pNext = nullptr;
+        accelerationBuildGeometryInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+        accelerationBuildGeometryInfo.flags =
+            VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+        accelerationBuildGeometryInfo.update = VK_FALSE;
+        accelerationBuildGeometryInfo.srcAccelerationStructure = VK_NULL_HANDLE;
+        accelerationBuildGeometryInfo.dstAccelerationStructure = topLevelAS;
         accelerationBuildGeometryInfo.geometryArrayOfPointers = VK_TRUE;
         accelerationBuildGeometryInfo.geometryCount = 1;
         accelerationBuildGeometryInfo.ppGeometries = accelerationGeometries.data();
