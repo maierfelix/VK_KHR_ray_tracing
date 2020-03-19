@@ -11,12 +11,13 @@
 #include <iostream>
 #include <vector>
 
-#define ASSERT_VK_RESULT(r)                                                           \
-    {                                                                                 \
-        VkResult result = (r);                                                        \
-        if (result != VK_SUCCESS) {                                                   \
-            std::cout << "Vulkan Assertion failed in Line " << __LINE__ << std::endl; \
-        }                                                                             \
+#define ASSERT_VK_RESULT(r)                                                                    \
+    {                                                                                          \
+        VkResult result = (r);                                                                 \
+        if (result != VK_SUCCESS) {                                                            \
+            std::cout << "Vulkan Assertion failed in Line " << __LINE__ << " with: " << result \
+                      << std::endl;                                                            \
+        }                                                                                      \
     }
 
 #define RESOLVE_VK_INSTANCE_PFN(instance, funcName)                                          \
@@ -55,16 +56,13 @@ static std::vector<char> readFile(const std::string& filename) {
     return buffer;
 }
 
-struct MappedBuffer {
-    VkBuffer buffer = VK_NULL_HANDLE;
-    VkDeviceMemory memory = VK_NULL_HANDLE;
-};
-
 struct AccelerationMemory {
     VkBuffer buffer = VK_NULL_HANDLE;
     VkDeviceMemory memory = VK_NULL_HANDLE;
     uint64_t memoryAddress = 0;
 };
+
+typedef struct AccelerationMemory MappedBuffer;
 
 VkDevice device = VK_NULL_HANDLE;
 VkInstance instance = VK_NULL_HANDLE;
@@ -145,7 +143,60 @@ uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
     throw std::runtime_error("failed to find suitable memory type!");
 }
 
-AccelerationMemory CreateAccelerationMemory(VkAccelerationStructureKHR acceleration) {
+MappedBuffer CreateMappedBuffer(void* srcData, uint32_t byteLength) {
+    MappedBuffer out = {};
+
+    VkBufferCreateInfo bufferInfo = {};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.pNext = nullptr;
+    bufferInfo.size = byteLength;
+    bufferInfo.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    bufferInfo.queueFamilyIndexCount = 0;
+    bufferInfo.pQueueFamilyIndices = nullptr;
+    ASSERT_VK_RESULT(vkCreateBuffer(device, &bufferInfo, nullptr, &out.buffer));
+
+    VkMemoryRequirements memoryRequirements = {};
+    vkGetBufferMemoryRequirements(device, out.buffer, &memoryRequirements);
+
+    VkMemoryAllocateFlagsInfo memAllocFlagsInfo = {};
+    memAllocFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+    memAllocFlagsInfo.pNext = nullptr;
+    memAllocFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
+    memAllocFlagsInfo.deviceMask = 0;
+
+    VkMemoryAllocateInfo memAllocInfo = {};
+    memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memAllocInfo.pNext = &memAllocFlagsInfo;
+    memAllocInfo.allocationSize = memoryRequirements.size;
+    memAllocInfo.memoryTypeIndex =
+        FindMemoryType(memoryRequirements.memoryTypeBits,
+                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    ASSERT_VK_RESULT(vkAllocateMemory(device, &memAllocInfo, nullptr, &out.memory));
+
+    ASSERT_VK_RESULT(vkBindBufferMemory(device, out.buffer, out.memory, 0));
+
+    VkBufferDeviceAddressInfoKHR bufferAddressInfo = {};
+    bufferAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    bufferAddressInfo.pNext = nullptr;
+    bufferAddressInfo.buffer = out.buffer;
+
+    PFN_vkGetBufferDeviceAddressKHR vkGetBufferDeviceAddressKHR;
+    RESOLVE_VK_DEVICE_PFN(device, vkGetBufferDeviceAddressKHR);
+
+    out.memoryAddress = vkGetBufferDeviceAddressKHR(device, &bufferAddressInfo);
+
+    void* dstData;
+    ASSERT_VK_RESULT(vkMapMemory(device, out.memory, 0, byteLength, 0, &dstData));
+    memcpy(dstData, srcData, byteLength);
+    vkUnmapMemory(device, out.memory);
+
+    return out;
+}
+
+AccelerationMemory CreateAccelerationMemory(VkAccelerationStructureKHR acceleration,
+                                            VkAccelerationStructureMemoryRequirementsTypeKHR type) {
     AccelerationMemory out = {};
 
     PFN_vkGetAccelerationStructureMemoryRequirementsKHR
@@ -156,14 +207,15 @@ AccelerationMemory CreateAccelerationMemory(VkAccelerationStructureKHR accelerat
     RESOLVE_VK_DEVICE_PFN(device, vkGetBufferDeviceAddressKHR);
 
     VkMemoryRequirements2 memoryRequirements2 = {};
+    memoryRequirements2.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
+    memoryRequirements2.pNext = nullptr;
     memoryRequirements2.memoryRequirements = {};
 
     VkAccelerationStructureMemoryRequirementsInfoKHR accelerationMemoryRequirements = {};
     accelerationMemoryRequirements.sType =
         VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_INFO_KHR;
     accelerationMemoryRequirements.pNext = nullptr;
-    accelerationMemoryRequirements.type =
-        VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_KHR;
+    accelerationMemoryRequirements.type = type;
     accelerationMemoryRequirements.buildType = VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR;
     accelerationMemoryRequirements.accelerationStructure = acceleration;
     vkGetAccelerationStructureMemoryRequirementsKHR(device, &accelerationMemoryRequirements,
@@ -196,6 +248,20 @@ AccelerationMemory CreateAccelerationMemory(VkAccelerationStructureKHR accelerat
     memAllocInfo.memoryTypeIndex =
         FindMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     ASSERT_VK_RESULT(vkAllocateMemory(device, &memAllocInfo, nullptr, &out.memory));
+
+    VkBindAccelerationStructureMemoryInfoKHR accelerationMemoryBindInfo = {};
+    accelerationMemoryBindInfo.sType =
+        VK_STRUCTURE_TYPE_BIND_ACCELERATION_STRUCTURE_MEMORY_INFO_KHR;
+    accelerationMemoryBindInfo.pNext = nullptr;
+    accelerationMemoryBindInfo.accelerationStructure = acceleration;
+    accelerationMemoryBindInfo.memory = out.memory;
+    accelerationMemoryBindInfo.memoryOffset = 0;
+    accelerationMemoryBindInfo.deviceIndexCount = 0;
+    accelerationMemoryBindInfo.pDeviceIndices = nullptr;
+
+    PFN_vkBindAccelerationStructureMemoryKHR vkBindAccelerationStructureMemoryKHR;
+    RESOLVE_VK_DEVICE_PFN(device, vkBindAccelerationStructureMemoryKHR);
+    ASSERT_VK_RESULT(vkBindAccelerationStructureMemoryKHR(device, 1, &accelerationMemoryBindInfo));
 
     ASSERT_VK_RESULT(vkBindBufferMemory(device, out.buffer, out.memory, 0));
 
@@ -506,6 +572,12 @@ int main() {
         };
         // clang-format on
 
+        MappedBuffer vertexBuffer =
+            CreateMappedBuffer(vertices.data(), sizeof(float) * vertices.size());
+
+        MappedBuffer indexBuffer =
+            CreateMappedBuffer(indices.data(), sizeof(uint32_t) * indices.size());
+
         VkAccelerationStructureGeometryKHR accelerationGeometry = {};
         accelerationGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
         accelerationGeometry.pNext = nullptr;
@@ -517,18 +589,26 @@ int main() {
             VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
         accelerationGeometry.geometry.triangles.pNext = nullptr;
         accelerationGeometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
-        accelerationGeometry.geometry.triangles.vertexData.hostAddress =
-            reinterpret_cast<void*>(vertices.data());
+        accelerationGeometry.geometry.triangles.vertexData.deviceAddress =
+            vertexBuffer.memoryAddress;
         accelerationGeometry.geometry.triangles.vertexStride = 3 * sizeof(float);
         accelerationGeometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
-        accelerationGeometry.geometry.triangles.indexData.hostAddress =
-            reinterpret_cast<void*>(indices.data());
+        accelerationGeometry.geometry.triangles.indexData.deviceAddress = indexBuffer.memoryAddress;
         accelerationGeometry.geometry.triangles.transformData.deviceAddress = VK_NULL_HANDLE;
+        accelerationGeometry.geometry.triangles.transformData.hostAddress = nullptr;
+        accelerationGeometry.geometry.aabbs = {};
+        accelerationGeometry.geometry.aabbs.sType =
+            VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_AABBS_DATA_KHR;
+        accelerationGeometry.geometry.instances = {};
+        accelerationGeometry.geometry.instances.sType =
+            VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
 
         std::vector<VkAccelerationStructureGeometryKHR*> accelerationGeometries(
             {&accelerationGeometry});
 
-        AccelerationMemory scratchMemory = CreateAccelerationMemory(bottomLevelAS);
+        // object memory
+        AccelerationMemory scratchMemory = CreateAccelerationMemory(
+            bottomLevelAS, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_KHR);
 
         VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo = {};
         accelerationBuildGeometryInfo.sType =
@@ -545,32 +625,6 @@ int main() {
         accelerationBuildGeometryInfo.ppGeometries = accelerationGeometries.data();
         accelerationBuildGeometryInfo.scratchData.deviceAddress = scratchMemory.memoryAddress;
 
-        VkAccelerationStructureDeviceAddressInfoKHR accelerationDeviceAddressInfo = {};
-        accelerationDeviceAddressInfo.sType =
-            VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
-        accelerationDeviceAddressInfo.pNext = nullptr;
-        accelerationDeviceAddressInfo.accelerationStructure = bottomLevelAS;
-
-        bottomLevelASHandle =
-            vkGetAccelerationStructureDeviceAddressKHR(device, &accelerationDeviceAddressInfo);
-
-        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
-
-        VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
-        commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        commandBufferAllocateInfo.pNext = nullptr;
-        commandBufferAllocateInfo.commandPool = commandPool;
-        commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        commandBufferAllocateInfo.commandBufferCount = 1;
-        ASSERT_VK_RESULT(
-            vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, &commandBuffer));
-
-        VkCommandBufferBeginInfo commandBufferBeginInfo = {};
-        commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        commandBufferBeginInfo.pNext = nullptr;
-        commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
-
         VkAccelerationStructureBuildOffsetInfoKHR accelerationBuildOffsetInfo = {};
         accelerationBuildOffsetInfo.primitiveCount = 3;
         accelerationBuildOffsetInfo.primitiveOffset = 0x0;
@@ -580,32 +634,30 @@ int main() {
         std::vector<VkAccelerationStructureBuildOffsetInfoKHR*> accelerationBuildOffsets = {
             &accelerationBuildOffsetInfo};
 
-        vkCmdBuildAccelerationStructureKHR(commandBuffer, 1, &accelerationBuildGeometryInfo,
-                                           accelerationBuildOffsets.data());
+        PFN_vkBuildAccelerationStructureKHR vkBuildAccelerationStructureKHR;
+        RESOLVE_VK_DEVICE_PFN(device, vkBuildAccelerationStructureKHR);
+        vkBuildAccelerationStructureKHR(device, 1, &accelerationBuildGeometryInfo,
+                                        accelerationBuildOffsets.data());
 
-        ASSERT_VK_RESULT(vkEndCommandBuffer(commandBuffer));
+        VkAccelerationStructureDeviceAddressInfoKHR accelerationDeviceAddressInfo = {};
+        accelerationDeviceAddressInfo.sType =
+            VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
+        accelerationDeviceAddressInfo.pNext = nullptr;
+        accelerationDeviceAddressInfo.accelerationStructure = bottomLevelAS;
 
-        VkSubmitInfo submitInfo = {};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.pNext = nullptr;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &commandBuffer;
+        bottomLevelASHandle =
+            vkGetAccelerationStructureDeviceAddressKHR(device, &accelerationDeviceAddressInfo);
 
-        VkFence fence = VK_NULL_HANDLE;
-        VkFenceCreateInfo fenceInfo = {};
-        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        fenceInfo.pNext = nullptr;
+        // make sure bottom AS handle is valid
+        if (bottomLevelASHandle == 0) {
+            std::cout << "Invalid Handle to BLAS" << std::endl;
+            return EXIT_FAILURE;
+        }
 
-        ASSERT_VK_RESULT(vkCreateFence(device, &fenceInfo, nullptr, &fence));
-        ASSERT_VK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, fence));
-        ASSERT_VK_RESULT(vkWaitForFences(device, 1, &fence, true, UINT64_MAX));
-
-        vkDestroyFence(device, fence, nullptr);
-        vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
     }
 
     // create top-level container
-    {
+    /*{
         VkAccelerationStructureCreateGeometryTypeInfoKHR accelerationCreateGeometryInfo = {};
         accelerationCreateGeometryInfo.sType =
             VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_GEOMETRY_TYPE_INFO_KHR;
@@ -630,18 +682,13 @@ int main() {
         ASSERT_VK_RESULT(
             vkCreateAccelerationStructureKHR(device, &accelerationInfo, nullptr, &topLevelAS));
 
-        // clang-format off
-        std::vector<VkAccelerationStructureInstanceKHR> instances = {
-            {
-                {1.0f, 0.0f, 0.0, 0.0f, 0.0f, 1.0f, 0.0, 0.0f, 0.0f, 0.0f, 1.0, 0.0f},
-                 0,
-                 0xFF,
-                 0x0,
-                 VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
-                 bottomLevelASHandle
-            }
-        };
-        // clang-format on
+        std::vector<VkAccelerationStructureInstanceKHR> instances(1);
+        instances[0] = {{1.0f, 0.0f, 0.0, 0.0f, 0.0f, 1.0f, 0.0, 0.0f, 0.0f, 0.0f, 1.0, 0.0f},
+                        0,
+                        0xFF,
+                        0x0,
+                        VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
+                        bottomLevelASHandle};
 
         VkAccelerationStructureGeometryKHR accelerationGeometry = {};
         accelerationGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
@@ -725,7 +772,7 @@ int main() {
 
         vkDestroyFence(device, fence, nullptr);
         vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
-    }
+    }*/
 
     VkSwapchainCreateInfoKHR swapchainInfo = {};
     swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
