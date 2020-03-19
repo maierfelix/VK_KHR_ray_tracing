@@ -249,6 +249,8 @@ AccelerationMemory CreateAccelerationMemory(VkAccelerationStructureKHR accelerat
         FindMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     ASSERT_VK_RESULT(vkAllocateMemory(device, &memAllocInfo, nullptr, &out.memory));
 
+    ASSERT_VK_RESULT(vkBindBufferMemory(device, out.buffer, out.memory, 0));
+
     VkBindAccelerationStructureMemoryInfoKHR accelerationMemoryBindInfo = {};
     accelerationMemoryBindInfo.sType =
         VK_STRUCTURE_TYPE_BIND_ACCELERATION_STRUCTURE_MEMORY_INFO_KHR;
@@ -262,8 +264,6 @@ AccelerationMemory CreateAccelerationMemory(VkAccelerationStructureKHR accelerat
     PFN_vkBindAccelerationStructureMemoryKHR vkBindAccelerationStructureMemoryKHR;
     RESOLVE_VK_DEVICE_PFN(device, vkBindAccelerationStructureMemoryKHR);
     ASSERT_VK_RESULT(vkBindAccelerationStructureMemoryKHR(device, 1, &accelerationMemoryBindInfo));
-
-    ASSERT_VK_RESULT(vkBindBufferMemory(device, out.buffer, out.memory, 0));
 
     VkBufferDeviceAddressInfoKHR bufferAddressInfo = {};
     bufferAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
