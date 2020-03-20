@@ -113,7 +113,7 @@ struct MsgInfo {
     LPARAM lParam;
 };
 
-std::wstring appName = L"VK_KHR_ray_tracing Triangle";
+std::wstring appName = L"VK_KHR_ray_tracing triangle";
 
 // clang-format off
 std::vector<const char*> instanceExtensions = {
@@ -284,6 +284,30 @@ AccelerationMemory CreateAccelerationMemory(VkAccelerationStructureKHR accelerat
     return out;
 }
 
+void InsertCommandImageBarrier(VkCommandBuffer commandBuffer,
+                               VkImage image,
+                               VkAccessFlags srcAccessMask,
+                               VkAccessFlags dstAccessMask,
+                               VkImageLayout oldLayout,
+                               VkImageLayout newLayout,
+                               const VkImageSubresourceRange& subresourceRange) {
+    VkImageMemoryBarrier imageMemoryBarrier = {};
+    imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    imageMemoryBarrier.pNext = nullptr;
+    imageMemoryBarrier.srcAccessMask = srcAccessMask;
+    imageMemoryBarrier.dstAccessMask = dstAccessMask;
+    imageMemoryBarrier.oldLayout = oldLayout;
+    imageMemoryBarrier.newLayout = newLayout;
+    imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    imageMemoryBarrier.image = image;
+    imageMemoryBarrier.subresourceRange = subresourceRange;
+
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                         VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1,
+                         &imageMemoryBarrier);
+}
+
 LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     MsgInfo info{hWnd, uMsg, wParam, lParam};
     switch (info.uMsg) {
@@ -293,39 +317,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
             break;
     }
     return (DefWindowProc(hWnd, uMsg, wParam, lParam));
-}
-
-void DrawFrame() {
-    uint32_t imageIndex = 0;
-    vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, semaphoreImageAvailable, nullptr,
-                          &imageIndex);
-
-    VkPipelineStageFlags waitStageMasks[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-
-    VkSubmitInfo submitInfo = {};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.pNext = nullptr;
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = &semaphoreImageAvailable;
-    submitInfo.pWaitDstStageMask = waitStageMasks;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &semaphoreRenderingAvailable;
-
-    ASSERT_VK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, nullptr));
-
-    VkPresentInfoKHR presentInfo = {};
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.pNext = nullptr;
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = &semaphoreRenderingAvailable;
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = &swapchain;
-    presentInfo.pImageIndices = &imageIndex;
-    presentInfo.pResults = nullptr;
-
-    ASSERT_VK_RESULT(vkQueuePresentKHR(queue, &presentInfo));
 }
 
 int main() {
@@ -1233,7 +1224,14 @@ int main() {
 
     for (uint32_t ii = 0; ii < amountOfImagesInSwapchain; ++ii) {
         VkCommandBuffer commandBuffer = commandBuffers[ii];
+        VkImage swapchainImage = swapchainImages[ii];
+        
         ASSERT_VK_RESULT(vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo));
+
+        // transition offscreen buffer into shader writeable state
+        InsertCommandImageBarrier(commandBuffer, offscreenBuffer, 0, VK_ACCESS_SHADER_WRITE_BIT,
+                                  VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+                                  subresourceRange);
 
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline);
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
@@ -1241,6 +1239,25 @@ int main() {
 
         vkCmdTraceRaysKHR(commandBuffer, &rayGenSBT, &rayMissSBT, &rayHitSBT, &rayCallSBT,
                           desiredWindowWidth, desiredWindowHeight, 1);
+
+        // transition swapchain image into copy destination state
+        InsertCommandImageBarrier(commandBuffer, swapchainImage, 0, VK_ACCESS_TRANSFER_WRITE_BIT,
+                                  VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                  subresourceRange);
+
+        // transition offscreen buffer into copy source state
+        InsertCommandImageBarrier(commandBuffer, offscreenBuffer, VK_ACCESS_SHADER_WRITE_BIT,
+                                  VK_ACCESS_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_GENERAL,
+                                  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, subresourceRange);
+
+        // copy offscreen buffer into swapchain image
+        vkCmdCopyImage(commandBuffer, offscreenBuffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                       swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+
+        // make swapchain image presentable
+        InsertCommandImageBarrier(commandBuffer, swapchainImage, VK_ACCESS_TRANSFER_WRITE_BIT, 0,
+                                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                  VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, subresourceRange);
 
         ASSERT_VK_RESULT(vkEndCommandBuffer(commandBuffer));
     };
@@ -1268,7 +1285,36 @@ int main() {
             }
         }
         if (!quitMessageReceived) {
-            //DrawFrame();
+            uint32_t imageIndex = 0;
+            vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, semaphoreImageAvailable, nullptr,
+                                  &imageIndex);
+
+            VkPipelineStageFlags waitStageMasks[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
+            VkSubmitInfo submitInfo = {};
+            submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submitInfo.pNext = nullptr;
+            submitInfo.waitSemaphoreCount = 1;
+            submitInfo.pWaitSemaphores = &semaphoreImageAvailable;
+            submitInfo.pWaitDstStageMask = waitStageMasks;
+            submitInfo.commandBufferCount = 1;
+            submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
+            submitInfo.signalSemaphoreCount = 1;
+            submitInfo.pSignalSemaphores = &semaphoreRenderingAvailable;
+
+            ASSERT_VK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, nullptr));
+
+            VkPresentInfoKHR presentInfo = {};
+            presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+            presentInfo.pNext = nullptr;
+            presentInfo.waitSemaphoreCount = 1;
+            presentInfo.pWaitSemaphores = &semaphoreRenderingAvailable;
+            presentInfo.swapchainCount = 1;
+            presentInfo.pSwapchains = &swapchain;
+            presentInfo.pImageIndices = &imageIndex;
+            presentInfo.pResults = nullptr;
+
+            ASSERT_VK_RESULT(vkQueuePresentKHR(queue, &presentInfo));
         }
     }
 
