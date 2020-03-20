@@ -1,6 +1,7 @@
 #include <Windows.h>
-#include <vulkan/vulkan_core.h>
-#include <vulkan/vulkan_beta.h>
+
+#define VK_ENABLE_BETA_EXTENSIONS
+#include <vulkan/vulkan.h>
 #include <vulkan/vulkan_win32.h>
 #pragma comment(lib, "vulkan-1.lib")
 
@@ -118,7 +119,8 @@ std::wstring appName = L"VK_KHR_ray_tracing triangle";
 // clang-format off
 std::vector<const char*> instanceExtensions = {
     VK_KHR_SURFACE_EXTENSION_NAME,
-    VK_KHR_WIN32_SURFACE_EXTENSION_NAME
+    VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+    VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME
 };
 std::vector<const char*> validationLayers = {
     //"VK_LAYER_KHRONOS_validation" // disabled until validation layers support new RT extension
@@ -126,8 +128,11 @@ std::vector<const char*> validationLayers = {
 std::vector<const char*> deviceExtensions({
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
     VK_KHR_RAY_TRACING_EXTENSION_NAME,
+    VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
     VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
-    VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME
+    VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+    VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+    VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME
 });
 // clang-format on
 
@@ -183,7 +188,6 @@ MappedBuffer CreateMappedBuffer(void* srcData, uint32_t byteLength) {
     memAllocInfo.memoryTypeIndex =
         FindMemoryType(memoryRequirements.memoryTypeBits,
                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
     ASSERT_VK_RESULT(vkAllocateMemory(device, &memAllocInfo, nullptr, &out.memory));
 
     ASSERT_VK_RESULT(vkBindBufferMemory(device, out.buffer, out.memory, 0));
@@ -334,6 +338,8 @@ int main() {
     PFN_vkDestroyAccelerationStructureKHR vkDestroyAccelerationStructureKHR;
     PFN_vkGetRayTracingShaderGroupHandlesKHR vkGetRayTracingShaderGroupHandlesKHR;
     PFN_vkCmdTraceRaysKHR vkCmdTraceRaysKHR;
+    PFN_vkBuildAccelerationStructureKHR vkBuildAccelerationStructureKHR;
+
     PFN_vkGetAccelerationStructureDeviceAddressKHR vkGetAccelerationStructureDeviceAddressKHR;
     // clang-format on
 
@@ -470,6 +476,7 @@ int main() {
     RESOLVE_VK_DEVICE_PFN(device, vkGetRayTracingShaderGroupHandlesKHR);
     RESOLVE_VK_DEVICE_PFN(device, vkCmdTraceRaysKHR);
     RESOLVE_VK_DEVICE_PFN(device, vkGetAccelerationStructureDeviceAddressKHR);
+    RESOLVE_VK_DEVICE_PFN(device, vkBuildAccelerationStructureKHR);
     // clang-format on
 
     VkWin32SurfaceCreateInfoKHR surfaceCreateInfo;
@@ -589,7 +596,8 @@ int main() {
         accelerationGeometry.geometry.triangles.vertexStride = 3 * sizeof(float);
         accelerationGeometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
         accelerationGeometry.geometry.triangles.indexData.deviceAddress = indexBuffer.memoryAddress;
-        accelerationGeometry.geometry.triangles.transformData.deviceAddress = VK_NULL_HANDLE;
+        accelerationGeometry.geometry.triangles.indexData.hostAddress = nullptr;
+        accelerationGeometry.geometry.triangles.transformData.deviceAddress = 0;
         accelerationGeometry.geometry.triangles.transformData.hostAddress = nullptr;
         accelerationGeometry.geometry.aabbs = {};
         accelerationGeometry.geometry.aabbs.sType =
@@ -615,10 +623,11 @@ int main() {
         accelerationBuildGeometryInfo.update = VK_FALSE;
         accelerationBuildGeometryInfo.srcAccelerationStructure = VK_NULL_HANDLE;
         accelerationBuildGeometryInfo.dstAccelerationStructure = bottomLevelAS;
-        accelerationBuildGeometryInfo.geometryArrayOfPointers = VK_TRUE;
+        accelerationBuildGeometryInfo.geometryArrayOfPointers = VK_FALSE;
         accelerationBuildGeometryInfo.geometryCount = 1;
         accelerationBuildGeometryInfo.ppGeometries = accelerationGeometries.data();
         accelerationBuildGeometryInfo.scratchData.deviceAddress = objectMemory.memoryAddress;
+        accelerationBuildGeometryInfo.scratchData.hostAddress = nullptr;
 
         VkAccelerationStructureBuildOffsetInfoKHR accelerationBuildOffsetInfo = {};
         accelerationBuildOffsetInfo.primitiveCount = 3;
@@ -629,6 +638,10 @@ int main() {
         std::vector<VkAccelerationStructureBuildOffsetInfoKHR*> accelerationBuildOffsets = {
             &accelerationBuildOffsetInfo};
 
+        vkBuildAccelerationStructureKHR(device, 1, &accelerationBuildGeometryInfo,
+                                        accelerationBuildOffsets.data());
+        /*
+        CRASH???
         VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
 
         VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
@@ -668,6 +681,7 @@ int main() {
 
         vkDestroyFence(device, fence, nullptr);
         vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+        */
 
         // take handle of the BLAS to later link to our TLAS
         VkAccelerationStructureDeviceAddressInfoKHR accelerationDeviceAddressInfo = {};
@@ -760,7 +774,18 @@ int main() {
         accelerationBuildGeometryInfo.ppGeometries = accelerationGeometries.data();
         accelerationBuildGeometryInfo.scratchData.deviceAddress = scratchMemory.memoryAddress;
 
-        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        VkAccelerationStructureBuildOffsetInfoKHR accelerationBuildOffsetInfo = {};
+        accelerationBuildOffsetInfo.primitiveCount = 3;
+        accelerationBuildOffsetInfo.primitiveOffset = 0x0;
+        accelerationBuildOffsetInfo.firstVertex = 0;
+        accelerationBuildOffsetInfo.transformOffset = 0x0;
+
+        std::vector<VkAccelerationStructureBuildOffsetInfoKHR*> accelerationBuildOffsets = {
+            &accelerationBuildOffsetInfo};
+
+        vkBuildAccelerationStructureKHR(device, 1, &accelerationBuildGeometryInfo,
+                                        accelerationBuildOffsets.data());
+        /*VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
 
         VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
         commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -776,15 +801,6 @@ int main() {
         commandBufferBeginInfo.pNext = nullptr;
         commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
-
-        VkAccelerationStructureBuildOffsetInfoKHR accelerationBuildOffsetInfo = {};
-        accelerationBuildOffsetInfo.primitiveCount = 3;
-        accelerationBuildOffsetInfo.primitiveOffset = 0x0;
-        accelerationBuildOffsetInfo.firstVertex = 0;
-        accelerationBuildOffsetInfo.transformOffset = 0x0;
-
-        std::vector<VkAccelerationStructureBuildOffsetInfoKHR*> accelerationBuildOffsets = {
-            &accelerationBuildOffsetInfo };
 
         vkCmdBuildAccelerationStructureKHR(commandBuffer, 1, &accelerationBuildGeometryInfo,
             accelerationBuildOffsets.data());
@@ -807,7 +823,7 @@ int main() {
         ASSERT_VK_RESULT(vkWaitForFences(device, 1, &fence, true, UINT64_MAX));
 
         vkDestroyFence(device, fence, nullptr);
-        vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+        vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);*/
     }
 
     // offscreen buffer
@@ -1123,12 +1139,14 @@ int main() {
     swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     swapchainInfo.pNext = nullptr;
     swapchainInfo.surface = surface;
+    swapchainInfo.minImageCount = 3; 
     swapchainInfo.imageFormat = desiredSurfaceFormat;
     swapchainInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
     swapchainInfo.imageExtent.width = desiredWindowWidth;
     swapchainInfo.imageExtent.height = desiredWindowHeight;
     swapchainInfo.imageArrayLayers = 1;
-    swapchainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    swapchainInfo.imageUsage =
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     swapchainInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     swapchainInfo.queueFamilyIndexCount = 0;
     swapchainInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
@@ -1225,18 +1243,17 @@ int main() {
     for (uint32_t ii = 0; ii < amountOfImagesInSwapchain; ++ii) {
         VkCommandBuffer commandBuffer = commandBuffers[ii];
         VkImage swapchainImage = swapchainImages[ii];
-        
+
         ASSERT_VK_RESULT(vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo));
 
         // transition offscreen buffer into shader writeable state
         InsertCommandImageBarrier(commandBuffer, offscreenBuffer, 0, VK_ACCESS_SHADER_WRITE_BIT,
                                   VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                                   subresourceRange);
-
+        
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline);
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
                                 pipelineLayout, 0, 1, &descriptorSet, 0, 0);
-
         vkCmdTraceRaysKHR(commandBuffer, &rayGenSBT, &rayMissSBT, &rayHitSBT, &rayCallSBT,
                           desiredWindowWidth, desiredWindowHeight, 1);
 
@@ -1254,10 +1271,20 @@ int main() {
         vkCmdCopyImage(commandBuffer, offscreenBuffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                        swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 
+        /*
+        InsertCommandImageBarrier(commandBuffer, swapchainImage, VK_ACCESS_MEMORY_READ_BIT,
+                                  VK_ACCESS_TRANSFER_WRITE_BIT,
+                                  VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                  subresourceRange);
+
+        VkClearColorValue clearColor = {{0.4f, 0.6f, 0.9f, 1.0f}};
+        vkCmdClearColorImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                             &clearColor, 1, &subresourceRange);
+
         // make swapchain image presentable
         InsertCommandImageBarrier(commandBuffer, swapchainImage, VK_ACCESS_TRANSFER_WRITE_BIT, 0,
                                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                  VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, subresourceRange);
+                                  VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, subresourceRange);*/
 
         ASSERT_VK_RESULT(vkEndCommandBuffer(commandBuffer));
     };
@@ -1286,8 +1313,8 @@ int main() {
         }
         if (!quitMessageReceived) {
             uint32_t imageIndex = 0;
-            vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, semaphoreImageAvailable, nullptr,
-                                  &imageIndex);
+            ASSERT_VK_RESULT(vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, semaphoreImageAvailable, nullptr,
+                                  &imageIndex));
 
             VkPipelineStageFlags waitStageMasks[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 

@@ -9,16 +9,22 @@ layout(binding = 0, set = 0) uniform accelerationStructureEXT acc;
 layout(binding = 1, rgba32f) uniform image2D img;
 
 void main() {
+
+  const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
+  const vec2 uv = pixelCenter/vec2(gl_LaunchIDEXT.xy);
+
   uint sbtOffset = 0;
   uint sbtStride = 0;
   uint missIndex = 0;
   vec3 rayOrigin = vec3(0);
   vec3 rayDir = vec3(0);
+
   traceRayEXT(
     acc, gl_RayFlagsOpaqueEXT, 0xff,
     sbtOffset, sbtStride, missIndex,
     rayOrigin, 0.1, rayDir, 4096.0,
     0
   );
-  imageStore(img, ivec2(gl_LaunchIDEXT), payload);
+
+  imageStore(img, ivec2(gl_LaunchIDEXT), vec4(uv * 0.5, 0, 0));
 }
