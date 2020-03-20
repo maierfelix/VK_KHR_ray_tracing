@@ -76,10 +76,12 @@ VkCommandPool commandPool = VK_NULL_HANDLE;
 VkPipeline pipeline = VK_NULL_HANDLE;
 VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
 
+VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
+VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+
 VkSurfaceKHR surface = VK_NULL_HANDLE;
 VkSwapchainKHR swapchain = VK_NULL_HANDLE;
-
-VkRenderPass renderPass = VK_NULL_HANDLE;
 
 VkSemaphore semaphoreImageAvailable = VK_NULL_HANDLE;
 VkSemaphore semaphoreRenderingAvailable = VK_NULL_HANDLE;
@@ -88,6 +90,8 @@ VkAccelerationStructureKHR bottomLevelAS = VK_NULL_HANDLE;
 uint64_t bottomLevelASHandle = 0;
 VkAccelerationStructureKHR topLevelAS = VK_NULL_HANDLE;
 uint64_t topLevelASHandle = 0;
+
+MappedBuffer shaderBindingTable = {};
 
 HWND window = NULL;
 HINSTANCE windowInstance;
@@ -530,6 +534,8 @@ int main() {
 
     // create bottom-level container
     {
+        std::cout << "Creating Bottom-Level Acceleration Structure.." << std::endl;
+
         VkAccelerationStructureCreateGeometryTypeInfoKHR accelerationCreateGeometryInfo = {};
         accelerationCreateGeometryInfo.sType =
             VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_GEOMETRY_TYPE_INFO_KHR;
@@ -687,6 +693,8 @@ int main() {
 
     // create top-level container
     {
+        std::cout << "Creating Top-Level Acceleration Structure.." << std::endl;
+
         VkAccelerationStructureCreateGeometryTypeInfoKHR accelerationCreateGeometryInfo = {};
         accelerationCreateGeometryInfo.sType =
             VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_GEOMETRY_TYPE_INFO_KHR;
@@ -806,8 +814,97 @@ int main() {
         vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
     }
 
+    // rt descriptor set layout
+    {
+        VkDescriptorSetLayoutBinding accelerationStructureLayoutBinding = {};
+        accelerationStructureLayoutBinding.binding = 0;
+        accelerationStructureLayoutBinding.descriptorType =
+            VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+        accelerationStructureLayoutBinding.descriptorCount = 1;
+        accelerationStructureLayoutBinding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+        accelerationStructureLayoutBinding.pImmutableSamplers = nullptr;
+
+        std::vector<VkDescriptorSetLayoutBinding> bindings({accelerationStructureLayoutBinding});
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.pNext = nullptr;
+        layoutInfo.flags = 0;
+        layoutInfo.bindingCount = bindings.size();
+        layoutInfo.pBindings = bindings.data();
+
+        ASSERT_VK_RESULT(
+            vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout));
+    }
+
+    // rt descriptor set
+    {
+        std::vector<VkDescriptorPoolSize> poolSizes(
+            {{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1}});
+
+        VkDescriptorPoolCreateInfo descriptorPoolInfo = {};
+        descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        descriptorPoolInfo.pNext = nullptr;
+        descriptorPoolInfo.flags = 0;
+        descriptorPoolInfo.maxSets = 1;
+        descriptorPoolInfo.poolSizeCount = poolSizes.size();
+        descriptorPoolInfo.pPoolSizes = poolSizes.data();
+
+        ASSERT_VK_RESULT(
+            vkCreateDescriptorPool(device, &descriptorPoolInfo, nullptr, &descriptorPool));
+
+        VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {};
+        descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        descriptorSetAllocateInfo.pNext = nullptr;
+        descriptorSetAllocateInfo.descriptorPool = descriptorPool;
+        descriptorSetAllocateInfo.descriptorSetCount = 1;
+        descriptorSetAllocateInfo.pSetLayouts = &descriptorSetLayout;
+
+        ASSERT_VK_RESULT(
+            vkAllocateDescriptorSets(device, &descriptorSetAllocateInfo, &descriptorSet));
+
+        VkWriteDescriptorSetAccelerationStructureKHR descriptorAccelerationStructureInfo;
+        descriptorAccelerationStructureInfo.sType =
+            VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+        descriptorAccelerationStructureInfo.pNext = nullptr;
+        descriptorAccelerationStructureInfo.accelerationStructureCount = 1;
+        descriptorAccelerationStructureInfo.pAccelerationStructures = &topLevelAS;
+
+        VkWriteDescriptorSet accelerationStructureWrite = {};
+        accelerationStructureWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        accelerationStructureWrite.pNext = &descriptorAccelerationStructureInfo;
+        accelerationStructureWrite.dstSet = descriptorSet;
+        accelerationStructureWrite.dstBinding = 0;
+        accelerationStructureWrite.descriptorCount = 1;
+        accelerationStructureWrite.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+
+        std::vector<VkWriteDescriptorSet> descriptorWrites({accelerationStructureWrite});
+
+        vkUpdateDescriptorSets(device, descriptorWrites.size(), descriptorWrites.data(), 0,
+                               nullptr);
+    }
+
+    // rt pipeline layout
+    {
+        std::cout << "Creating RT Pipeline Layout.." << std::endl;
+
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
+        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutInfo.pNext = nullptr;
+        pipelineLayoutInfo.flags = 0;
+        pipelineLayoutInfo.setLayoutCount = 1;
+        pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+        pipelineLayoutInfo.pushConstantRangeCount = 0;
+        pipelineLayoutInfo.pPushConstantRanges = nullptr;
+
+        ASSERT_VK_RESULT(
+            vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout));
+    }
+
     // rt pipeline
     {
+        std::cout << "Creating RT Pipeline.." << std::endl;
+
         std::vector<char> rgenShaderSrc = readFile("../shaders/ray-generation.spv");
         std::vector<char> rchitShaderSrc = readFile("../shaders/ray-closest-hit.spv");
         std::vector<char> rmissShaderSrc = readFile("../shaders/ray-miss.spv");
@@ -822,7 +919,6 @@ int main() {
         rayGenShaderStageInfo.stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
         rayGenShaderStageInfo.module = rayGenShaderModule;
         rayGenShaderStageInfo.pName = "main";
-        rayGenShaderStageInfo.pSpecializationInfo = nullptr;
 
         VkPipelineShaderStageCreateInfo rayChitShaderStageInfo = {};
         rayChitShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -830,7 +926,6 @@ int main() {
         rayChitShaderStageInfo.stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
         rayChitShaderStageInfo.module = rayChitShaderModule;
         rayChitShaderStageInfo.pName = "main";
-        rayChitShaderStageInfo.pSpecializationInfo = nullptr;
 
         VkPipelineShaderStageCreateInfo rayMissShaderStageInfo = {};
         rayMissShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -838,56 +933,117 @@ int main() {
         rayMissShaderStageInfo.stage = VK_SHADER_STAGE_MISS_BIT_KHR;
         rayMissShaderStageInfo.module = rayMissShaderModule;
         rayMissShaderStageInfo.pName = "main";
-        rayMissShaderStageInfo.pSpecializationInfo = nullptr;
 
         std::vector<VkPipelineShaderStageCreateInfo> shaderStages = {
             rayGenShaderStageInfo, rayChitShaderStageInfo, rayMissShaderStageInfo};
 
+        VkRayTracingShaderGroupCreateInfoKHR rayGenGroup = {};
+        rayGenGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+        rayGenGroup.pNext = nullptr;
+        rayGenGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+        rayGenGroup.generalShader = 0;
+        rayGenGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
+        rayGenGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
+        rayGenGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
 
+        VkRayTracingShaderGroupCreateInfoKHR rayHitGroup = {};
+        rayHitGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+        rayHitGroup.pNext = nullptr;
+        rayHitGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
+        rayHitGroup.generalShader = VK_SHADER_UNUSED_KHR;
+        rayHitGroup.closestHitShader = 1;
+        rayHitGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
+        rayHitGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
 
+        VkRayTracingShaderGroupCreateInfoKHR rayMissGroup = {};
+        rayMissGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+        rayMissGroup.pNext = nullptr;
+        rayMissGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+        rayMissGroup.generalShader = 2;
+        rayMissGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
+        rayMissGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
+        rayMissGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
+
+        std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups = {rayGenGroup, rayHitGroup,
+                                                                         rayMissGroup};
+
+        VkRayTracingPipelineCreateInfoKHR pipelineInfo = {};
+        pipelineInfo.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
+        pipelineInfo.pNext = nullptr;
+        pipelineInfo.flags = VK_PIPELINE_CREATE_RAY_TRACING_NO_NULL_CLOSEST_HIT_SHADERS_BIT_KHR;
+        pipelineInfo.stageCount = shaderStages.size();
+        pipelineInfo.pStages = shaderStages.data();
+        pipelineInfo.groupCount = shaderGroups.size();
+        pipelineInfo.pGroups = shaderGroups.data();
+        pipelineInfo.maxRecursionDepth = 1;
+        pipelineInfo.libraries = {};
+        pipelineInfo.libraries.sType = VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR;
+        pipelineInfo.libraries.pNext = nullptr;
+        pipelineInfo.libraries.libraryCount = 0;
+        pipelineInfo.libraries.pLibraries = nullptr;
+        pipelineInfo.pLibraryInterface = nullptr;
+        pipelineInfo.layout = pipelineLayout;
+        pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+        pipelineInfo.basePipelineIndex = 0;
+
+        ASSERT_VK_RESULT(
+            vkCreateRayTracingPipelinesKHR(device, nullptr, 1, &pipelineInfo, nullptr, &pipeline));
     }
 
     // shader binding table
-    /*{
+    {
+        std::cout << "Creating Shader Binding Table.." << std::endl;
+
         uint32_t groupNum = 3;
         uint32_t shaderBindingTableSize = groupNum * rayTracingProperties.shaderGroupHandleSize;
 
-        MappedBuffer out = {};
-
-        uint32_t byteLength = shaderBindingTableSize;
+        shaderBindingTable = {};
 
         VkBufferCreateInfo bufferInfo = {};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.pNext = nullptr;
-        bufferInfo.size = byteLength;
-        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        bufferInfo.size = shaderBindingTableSize;
+        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_RAY_TRACING_BIT_KHR;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         bufferInfo.queueFamilyIndexCount = 0;
         bufferInfo.pQueueFamilyIndices = nullptr;
-        ASSERT_VK_RESULT(vkCreateBuffer(device, &bufferInfo, nullptr, &out.buffer));
+        ASSERT_VK_RESULT(vkCreateBuffer(device, &bufferInfo, nullptr, &shaderBindingTable.buffer));
 
         VkMemoryRequirements memoryRequirements = {};
-        vkGetBufferMemoryRequirements(device, out.buffer, &memoryRequirements);
+        vkGetBufferMemoryRequirements(device, shaderBindingTable.buffer, &memoryRequirements);
 
         VkMemoryAllocateInfo memAllocInfo = {};
         memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         memAllocInfo.pNext = nullptr;
         memAllocInfo.allocationSize = memoryRequirements.size;
-        memAllocInfo.memoryTypeIndex = FindMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+        memAllocInfo.memoryTypeIndex =
+            FindMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 
-        ASSERT_VK_RESULT(vkAllocateMemory(device, &memAllocInfo, nullptr, &out.memory));
+        ASSERT_VK_RESULT(
+            vkAllocateMemory(device, &memAllocInfo, nullptr, &shaderBindingTable.memory));
 
-        ASSERT_VK_RESULT(vkBindBufferMemory(device, out.buffer, out.memory, 0));
+        ASSERT_VK_RESULT(
+            vkBindBufferMemory(device, shaderBindingTable.buffer, shaderBindingTable.memory, 0));
 
         void* dstData;
-        ASSERT_VK_RESULT(vkMapMemory(device, out.memory, 0, byteLength, 0, &dstData));
+        ASSERT_VK_RESULT(
+            vkMapMemory(device, shaderBindingTable.memory, 0, shaderBindingTableSize, 0, &dstData));
 
-        printf("Size: %i\n", shaderBindingTableSize);
-        printf("Mapped ptr: %p\n", dstData);
-        vkGetRayTracingShaderGroupHandlesKHR(device, rayTracingPipeline, 0, groupNum, shaderBindingTableSize,
+        vkGetRayTracingShaderGroupHandlesKHR(device, pipeline, 0, groupNum, shaderBindingTableSize,
                                              dstData);
-    }*/
-    
+    }
+
+    uint32_t presentModeCount = 0;
+    ASSERT_VK_RESULT(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface,
+                                                               &presentModeCount, nullptr));
+
+    std::vector<VkPresentModeKHR> presentModes(presentModeCount);
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount,
+                                              presentModes.data());
+
+    bool isMailboxModeSupported = std::find(presentModes.begin(), presentModes.end(),
+                                            VK_PRESENT_MODE_MAILBOX_KHR) != presentModes.end();
+
     VkSwapchainCreateInfoKHR swapchainInfo = {};
     swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     swapchainInfo.pNext = nullptr;
@@ -902,7 +1058,8 @@ int main() {
     swapchainInfo.queueFamilyIndexCount = 0;
     swapchainInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     swapchainInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    swapchainInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+    swapchainInfo.presentMode =
+        isMailboxModeSupported ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR;
     swapchainInfo.clipped = VK_TRUE;
     swapchainInfo.oldSwapchain = nullptr;
 
@@ -933,21 +1090,6 @@ int main() {
         ASSERT_VK_RESULT(vkCreateImageView(device, &imageViewInfo, nullptr, &imageViews[ii]));
     };
 
-    std::vector<VkFramebuffer> frameBuffers(amountOfImagesInSwapchain);
-
-    for (uint32_t ii = 0; ii < amountOfImagesInSwapchain; ++ii) {
-        VkFramebufferCreateInfo framebufferInfo = {};
-        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebufferInfo.pNext = nullptr;
-        framebufferInfo.renderPass = renderPass;
-        framebufferInfo.attachmentCount = 1;
-        framebufferInfo.pAttachments = &imageViews[ii];
-        framebufferInfo.width = desiredWindowWidth;
-        framebufferInfo.height = desiredWindowHeight;
-        framebufferInfo.layers = 1;
-        ASSERT_VK_RESULT(vkCreateFramebuffer(device, &framebufferInfo, nullptr, &frameBuffers[ii]));
-    };
-
     VkCommandBufferAllocateInfo cmdBufferAllocInfo = {};
     cmdBufferAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     cmdBufferAllocInfo.pNext = nullptr;
@@ -965,30 +1107,20 @@ int main() {
     commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
     commandBufferBeginInfo.pInheritanceInfo = nullptr;
 
-    /*for (uint32_t ii = 0; ii < amountOfImagesInSwapchain; ++ii) {
+    for (uint32_t ii = 0; ii < amountOfImagesInSwapchain; ++ii) {
         VkCommandBuffer commandBuffer = commandBuffers[ii];
         ASSERT_VK_RESULT(vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo));
 
-        VkClearValue clearValue = {};
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
+                                pipelineLayout, 0, 1, &descriptorSet, 0, 0);
 
-        VkRenderPassBeginInfo renderPassBeginInfo = {};
-        renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        renderPassBeginInfo.pNext = nullptr;
-        renderPassBeginInfo.renderPass = renderPass;
-        renderPassBeginInfo.framebuffer = frameBuffers[ii];
-        renderPassBeginInfo.renderArea.offset.x = 0;
-        renderPassBeginInfo.renderArea.offset.y = 0;
-        renderPassBeginInfo.renderArea.extent.width = desiredWindowWidth;
-        renderPassBeginInfo.renderArea.extent.height = desiredWindowHeight;
-        renderPassBeginInfo.clearValueCount = 1;
-        renderPassBeginInfo.pClearValues = &clearValue;
-        vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-
-        vkCmdDraw(commandBuffer, 3, 1, 0, 0);
-
-        vkCmdEndRenderPass(commandBuffer);
+        vkCmdTraceRaysKHR(commandBuffer, shaderBindingTable.buffer, 0, shaderBindingTable.buffer,
+                         2 * rayTracingProperties.shaderGroupHandleSize,
+                         rayTracingProperties.shaderGroupHandleSize, shaderBindingTable.buffer,
+                         1 * rayTracingProperties.shaderGroupHandleSize,
+                         rayTracingProperties.shaderGroupHandleSize, VK_NULL_HANDLE, 0, 0,
+                         desiredWindowWidth, desiredWindowHeight, 1);
 
         ASSERT_VK_RESULT(vkEndCommandBuffer(commandBuffer));
     };
@@ -1001,7 +1133,7 @@ int main() {
 
     ASSERT_VK_RESULT(
         vkCreateSemaphore(device, &semaphoreInfo, nullptr, &semaphoreRenderingAvailable));
-        */
+
     std::cout << "Running.." << std::endl;
 
     MSG msg;
