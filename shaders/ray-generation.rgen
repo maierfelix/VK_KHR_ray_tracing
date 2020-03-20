@@ -6,7 +6,7 @@ layout(location = 0) rayPayloadEXT vec4 payload;
 
 layout(binding = 0, set = 0) uniform accelerationStructureEXT acc;
 
-//layout(binding = 1, rgba32f) uniform image2D img;
+layout(binding = 1, rgba32f) uniform image2D img;
 
 void main() {
   uint sbtOffset = 0;
@@ -20,5 +20,5 @@ void main() {
     rayOrigin, 0.1, rayDir, 4096.0,
     0
   );
-  //imageStore(img, ivec2(gl_LaunchIDEXT), payload);
+  imageStore(img, ivec2(gl_LaunchIDEXT), payload);
 }

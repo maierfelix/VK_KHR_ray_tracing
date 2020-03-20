@@ -86,12 +86,20 @@ VkSwapchainKHR swapchain = VK_NULL_HANDLE;
 VkSemaphore semaphoreImageAvailable = VK_NULL_HANDLE;
 VkSemaphore semaphoreRenderingAvailable = VK_NULL_HANDLE;
 
+VkImage offscreenBuffer;
+VkImageView offscreenBufferView;
+VkDeviceMemory offscreenBufferMemory;
+
+MappedBuffer shaderBindingTable = {};
+
 VkAccelerationStructureKHR bottomLevelAS = VK_NULL_HANDLE;
 uint64_t bottomLevelASHandle = 0;
 VkAccelerationStructureKHR topLevelAS = VK_NULL_HANDLE;
 uint64_t topLevelASHandle = 0;
 
-MappedBuffer shaderBindingTable = {};
+uint32_t desiredWindowWidth = 1280;
+uint32_t desiredWindowHeight = 720;
+VkFormat desiredSurfaceFormat = VK_FORMAT_B8G8R8A8_UNORM;
 
 HWND window = NULL;
 HINSTANCE windowInstance;
@@ -106,9 +114,6 @@ struct MsgInfo {
 };
 
 std::wstring appName = L"VK_KHR_ray_tracing Triangle";
-
-uint32_t desiredWindowWidth = 1280;
-uint32_t desiredWindowHeight = 720;
 
 // clang-format off
 std::vector<const char*> instanceExtensions = {
@@ -814,6 +819,62 @@ int main() {
         vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
     }
 
+    // offscreen buffer
+    {
+        VkImageCreateInfo imageInfo = {};
+        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageInfo.pNext = nullptr;
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.format = desiredSurfaceFormat;
+        imageInfo.extent = {desiredWindowWidth, desiredWindowHeight, 1};
+        imageInfo.mipLevels = 1;
+        imageInfo.arrayLayers = 1;
+        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT;
+        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        imageInfo.queueFamilyIndexCount = 0;
+        imageInfo.pQueueFamilyIndices = nullptr;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        ASSERT_VK_RESULT(vkCreateImage(device, &imageInfo, nullptr, &offscreenBuffer));
+
+        VkMemoryRequirements memoryRequirements = {};
+        vkGetImageMemoryRequirements(device, offscreenBuffer, &memoryRequirements);
+
+        VkMemoryAllocateInfo memoryAllocateInfo = {};
+        memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        memoryAllocateInfo.pNext = nullptr;
+        memoryAllocateInfo.allocationSize = memoryRequirements.size;
+        memoryAllocateInfo.memoryTypeIndex =
+            FindMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+        ASSERT_VK_RESULT(
+            vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &offscreenBufferMemory));
+
+        ASSERT_VK_RESULT(vkBindImageMemory(device, offscreenBuffer, offscreenBufferMemory, 0));
+
+        VkImageViewCreateInfo imageViewInfo = {};
+        imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        imageViewInfo.pNext = nullptr;
+        imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        imageViewInfo.format = desiredSurfaceFormat;
+        imageViewInfo.subresourceRange = {};
+        imageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageViewInfo.subresourceRange.baseMipLevel = 0;
+        imageViewInfo.subresourceRange.levelCount = 1;
+        imageViewInfo.subresourceRange.baseArrayLayer = 0;
+        imageViewInfo.subresourceRange.layerCount = 1;
+        imageViewInfo.image = offscreenBuffer;
+        imageViewInfo.flags = 0;
+        imageViewInfo.components.r = VK_COMPONENT_SWIZZLE_R;
+        imageViewInfo.components.g = VK_COMPONENT_SWIZZLE_G;
+        imageViewInfo.components.b = VK_COMPONENT_SWIZZLE_B;
+        imageViewInfo.components.a = VK_COMPONENT_SWIZZLE_A;
+
+        ASSERT_VK_RESULT(vkCreateImageView(device, &imageViewInfo, nullptr, &offscreenBufferView));
+    }
+
     // rt descriptor set layout
     {
         VkDescriptorSetLayoutBinding accelerationStructureLayoutBinding = {};
@@ -824,7 +885,14 @@ int main() {
         accelerationStructureLayoutBinding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
         accelerationStructureLayoutBinding.pImmutableSamplers = nullptr;
 
-        std::vector<VkDescriptorSetLayoutBinding> bindings({accelerationStructureLayoutBinding});
+        VkDescriptorSetLayoutBinding storageImageLayoutBinding = {};
+        storageImageLayoutBinding.binding = 1;
+        storageImageLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        storageImageLayoutBinding.descriptorCount = 1;
+        storageImageLayoutBinding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+
+        std::vector<VkDescriptorSetLayoutBinding> bindings(
+            {accelerationStructureLayoutBinding, storageImageLayoutBinding});
 
         VkDescriptorSetLayoutCreateInfo layoutInfo = {};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -840,7 +908,8 @@ int main() {
     // rt descriptor set
     {
         std::vector<VkDescriptorPoolSize> poolSizes(
-            {{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1}});
+            {{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1},
+             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}});
 
         VkDescriptorPoolCreateInfo descriptorPoolInfo = {};
         descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -878,7 +947,22 @@ int main() {
         accelerationStructureWrite.descriptorCount = 1;
         accelerationStructureWrite.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 
-        std::vector<VkWriteDescriptorSet> descriptorWrites({accelerationStructureWrite});
+        VkDescriptorImageInfo storageImageInfo = {};
+        storageImageInfo.sampler = VK_NULL_HANDLE;
+        storageImageInfo.imageView = offscreenBufferView;
+        storageImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+        VkWriteDescriptorSet outputImageWrite = {};
+        outputImageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        outputImageWrite.pNext = nullptr;
+        outputImageWrite.dstSet = descriptorSet;
+        outputImageWrite.dstBinding = 1;
+        outputImageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        outputImageWrite.descriptorCount = 1;
+        outputImageWrite.pImageInfo = &storageImageInfo;
+
+        std::vector<VkWriteDescriptorSet> descriptorWrites(
+            {accelerationStructureWrite, outputImageWrite});
 
         vkUpdateDescriptorSets(device, descriptorWrites.size(), descriptorWrites.data(), 0,
                                nullptr);
@@ -1003,7 +1087,7 @@ int main() {
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.pNext = nullptr;
         bufferInfo.size = shaderBindingTableSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_RAY_TRACING_BIT_KHR;
+        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         bufferInfo.queueFamilyIndexCount = 0;
         bufferInfo.pQueueFamilyIndices = nullptr;
@@ -1048,7 +1132,7 @@ int main() {
     swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     swapchainInfo.pNext = nullptr;
     swapchainInfo.surface = surface;
-    swapchainInfo.imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
+    swapchainInfo.imageFormat = desiredSurfaceFormat;
     swapchainInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
     swapchainInfo.imageExtent.width = desiredWindowWidth;
     swapchainInfo.imageExtent.height = desiredWindowHeight;
@@ -1080,7 +1164,7 @@ int main() {
         imageViewInfo.pNext = nullptr;
         imageViewInfo.image = swapchainImages[ii];
         imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        imageViewInfo.format = VK_FORMAT_B8G8R8A8_UNORM;
+        imageViewInfo.format = desiredSurfaceFormat;
         imageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         imageViewInfo.subresourceRange.baseMipLevel = 0;
         imageViewInfo.subresourceRange.levelCount = 1;
@@ -1107,6 +1191,46 @@ int main() {
     commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
     commandBufferBeginInfo.pInheritanceInfo = nullptr;
 
+    VkImageCopy copyRegion = {};
+    copyRegion.srcSubresource = {};
+    copyRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    copyRegion.srcSubresource.mipLevel = 0;
+    copyRegion.srcSubresource.baseArrayLayer = 0;
+    copyRegion.srcSubresource.layerCount = 1;
+    copyRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    copyRegion.dstSubresource.mipLevel = 0;
+    copyRegion.dstSubresource.baseArrayLayer = 0;
+    copyRegion.dstSubresource.layerCount = 1;
+    copyRegion.extent = {};
+    copyRegion.extent.depth = 1;
+    copyRegion.extent.width = desiredWindowWidth;
+    copyRegion.extent.height = desiredWindowHeight;
+
+    VkImageSubresourceRange subresourceRange = {};
+    subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    subresourceRange.baseMipLevel = 0;
+    subresourceRange.levelCount = 1;
+    subresourceRange.baseArrayLayer = 0;
+    subresourceRange.layerCount = 1;
+
+    // sbt offsets
+    uint32_t groupNum = 3;
+    uint32_t shaderBindingTableSize = groupNum * rayTracingProperties.shaderGroupHandleSize;
+    // clang-format off
+    VkStridedBufferRegionKHR rayGenSBT = {
+        shaderBindingTable.buffer, 0, shaderBindingTableSize
+    };
+    VkStridedBufferRegionKHR rayMissSBT = {
+        shaderBindingTable.buffer, 2 * shaderBindingTableSize, shaderBindingTableSize
+    };
+    VkStridedBufferRegionKHR rayHitSBT = {
+        shaderBindingTable.buffer, 1 * shaderBindingTableSize, shaderBindingTableSize
+    };
+    VkStridedBufferRegionKHR rayCallSBT = {
+        VK_NULL_HANDLE, 0, 0, 0
+    };
+    // clang-format on
+
     for (uint32_t ii = 0; ii < amountOfImagesInSwapchain; ++ii) {
         VkCommandBuffer commandBuffer = commandBuffers[ii];
         ASSERT_VK_RESULT(vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo));
@@ -1114,24 +1238,6 @@ int main() {
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline);
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
                                 pipelineLayout, 0, 1, &descriptorSet, 0, 0);
-
-        uint32_t groupNum = 3;
-        uint32_t shaderBindingTableSize = groupNum * rayTracingProperties.shaderGroupHandleSize;
-
-        // clang-format off
-        VkStridedBufferRegionKHR rayGenSBT = {
-            shaderBindingTable.buffer, 0, shaderBindingTableSize
-        };
-        VkStridedBufferRegionKHR rayMissSBT = {
-            shaderBindingTable.buffer, 2 * shaderBindingTableSize, shaderBindingTableSize
-        };
-        VkStridedBufferRegionKHR rayHitSBT = {
-            shaderBindingTable.buffer, 1 * shaderBindingTableSize, shaderBindingTableSize
-        };
-        VkStridedBufferRegionKHR rayCallSBT = {
-            VK_NULL_HANDLE, 0, 0, 0
-        };
-        // clang-format on
 
         vkCmdTraceRaysKHR(commandBuffer, &rayGenSBT, &rayMissSBT, &rayHitSBT, &rayCallSBT,
                           desiredWindowWidth, desiredWindowHeight, 1);
