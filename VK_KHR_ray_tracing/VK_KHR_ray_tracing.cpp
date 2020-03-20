@@ -1115,12 +1115,26 @@ int main() {
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
                                 pipelineLayout, 0, 1, &descriptorSet, 0, 0);
 
-        vkCmdTraceRaysKHR(commandBuffer, shaderBindingTable.buffer, 0, shaderBindingTable.buffer,
-                         2 * rayTracingProperties.shaderGroupHandleSize,
-                         rayTracingProperties.shaderGroupHandleSize, shaderBindingTable.buffer,
-                         1 * rayTracingProperties.shaderGroupHandleSize,
-                         rayTracingProperties.shaderGroupHandleSize, VK_NULL_HANDLE, 0, 0,
-                         desiredWindowWidth, desiredWindowHeight, 1);
+        uint32_t groupNum = 3;
+        uint32_t shaderBindingTableSize = groupNum * rayTracingProperties.shaderGroupHandleSize;
+
+        // clang-format off
+        VkStridedBufferRegionKHR rayGenSBT = {
+            shaderBindingTable.buffer, 0, shaderBindingTableSize
+        };
+        VkStridedBufferRegionKHR rayMissSBT = {
+            shaderBindingTable.buffer, 2 * shaderBindingTableSize, shaderBindingTableSize
+        };
+        VkStridedBufferRegionKHR rayHitSBT = {
+            shaderBindingTable.buffer, 1 * shaderBindingTableSize, shaderBindingTableSize
+        };
+        VkStridedBufferRegionKHR rayCallSBT = {
+            VK_NULL_HANDLE, 0, 0, 0
+        };
+        // clang-format on
+
+        vkCmdTraceRaysKHR(commandBuffer, &rayGenSBT, &rayMissSBT, &rayHitSBT, &rayCallSBT,
+                          desiredWindowWidth, desiredWindowHeight, 1);
 
         ASSERT_VK_RESULT(vkEndCommandBuffer(commandBuffer));
     };
