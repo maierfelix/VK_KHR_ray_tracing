@@ -1000,29 +1000,25 @@ int main() {
         std::vector<char> rchitShaderSrc = readFile("../shaders/ray-closest-hit.spv");
         std::vector<char> rmissShaderSrc = readFile("../shaders/ray-miss.spv");
 
-        VkShaderModule rayGenShaderModule = CreateShaderModule(rgenShaderSrc);
-        VkShaderModule rayChitShaderModule = CreateShaderModule(rchitShaderSrc);
-        VkShaderModule rayMissShaderModule = CreateShaderModule(rmissShaderSrc);
-
         VkPipelineShaderStageCreateInfo rayGenShaderStageInfo = {};
         rayGenShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         rayGenShaderStageInfo.pNext = nullptr;
         rayGenShaderStageInfo.stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
-        rayGenShaderStageInfo.module = rayGenShaderModule;
+        rayGenShaderStageInfo.module = CreateShaderModule(rgenShaderSrc);
         rayGenShaderStageInfo.pName = "main";
 
         VkPipelineShaderStageCreateInfo rayChitShaderStageInfo = {};
         rayChitShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         rayChitShaderStageInfo.pNext = nullptr;
         rayChitShaderStageInfo.stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
-        rayChitShaderStageInfo.module = rayChitShaderModule;
+        rayChitShaderStageInfo.module = CreateShaderModule(rchitShaderSrc);
         rayChitShaderStageInfo.pName = "main";
 
         VkPipelineShaderStageCreateInfo rayMissShaderStageInfo = {};
         rayMissShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         rayMissShaderStageInfo.pNext = nullptr;
         rayMissShaderStageInfo.stage = VK_SHADER_STAGE_MISS_BIT_KHR;
-        rayMissShaderStageInfo.module = rayMissShaderModule;
+        rayMissShaderStageInfo.module = CreateShaderModule(rmissShaderSrc);
         rayMissShaderStageInfo.pName = "main";
 
         std::vector<VkPipelineShaderStageCreateInfo> shaderStages = {
@@ -1061,7 +1057,7 @@ int main() {
         VkRayTracingPipelineCreateInfoKHR pipelineInfo = {};
         pipelineInfo.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
         pipelineInfo.pNext = nullptr;
-        pipelineInfo.flags = VK_PIPELINE_CREATE_RAY_TRACING_NO_NULL_CLOSEST_HIT_SHADERS_BIT_KHR;
+        pipelineInfo.flags = 0;
         pipelineInfo.stageCount = shaderStages.size();
         pipelineInfo.pStages = shaderStages.data();
         pipelineInfo.groupCount = shaderGroups.size();
@@ -1270,21 +1266,6 @@ int main() {
         // copy offscreen buffer into swapchain image
         vkCmdCopyImage(commandBuffer, offscreenBuffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                        swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
-
-        /*
-        InsertCommandImageBarrier(commandBuffer, swapchainImage, VK_ACCESS_MEMORY_READ_BIT,
-                                  VK_ACCESS_TRANSFER_WRITE_BIT,
-                                  VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                  subresourceRange);
-
-        VkClearColorValue clearColor = {{0.4f, 0.6f, 0.9f, 1.0f}};
-        vkCmdClearColorImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                             &clearColor, 1, &subresourceRange);
-
-        // make swapchain image presentable
-        InsertCommandImageBarrier(commandBuffer, swapchainImage, VK_ACCESS_TRANSFER_WRITE_BIT, 0,
-                                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                  VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, subresourceRange);*/
 
         ASSERT_VK_RESULT(vkEndCommandBuffer(commandBuffer));
     };
