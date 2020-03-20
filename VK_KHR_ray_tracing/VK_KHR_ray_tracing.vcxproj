@@ -148,6 +148,7 @@ del "$(SolutionDir)$(TargetName)\vulkan-1.lib" /q</Command>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>..\third_party\vulkan\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -155,6 +156,12 @@ del "$(SolutionDir)$(TargetName)\vulkan-1.lib" /q</Command>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PreLinkEvent>
+      <Command>copy /Y "$(SolutionDir)third_party\vulkan\lib\vulkan-1.lib" "$(SolutionDir)$(TargetName)\vulkan-1.lib"</Command>
+    </PreLinkEvent>
+    <PostBuildEvent>
+      <Command>copy /Y "$(SolutionDir)third_party\vulkan\lib\vulkan-1.dll" "$(TargetDir)vulkan-1.dll"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="VK_KHR_ray_tracing.cpp" />
