@@ -98,8 +98,8 @@ uint64_t bottomLevelASHandle = 0;
 VkAccelerationStructureKHR topLevelAS = VK_NULL_HANDLE;
 uint64_t topLevelASHandle = 0;
 
-uint32_t desiredWindowWidth = 1280;
-uint32_t desiredWindowHeight = 720;
+uint32_t desiredWindowWidth = 640;
+uint32_t desiredWindowHeight = 480;
 VkFormat desiredSurfaceFormat = VK_FORMAT_B8G8R8A8_UNORM;
 
 HWND window = NULL;
@@ -671,7 +671,7 @@ int main() {
         accelerationBuildGeometryInfo.scratchData.deviceAddress = buildScratchMemory.memoryAddress;
 
         VkAccelerationStructureBuildOffsetInfoKHR accelerationBuildOffsetInfo = {};
-        accelerationBuildOffsetInfo.primitiveCount = 3;
+        accelerationBuildOffsetInfo.primitiveCount = 1;
         accelerationBuildOffsetInfo.primitiveOffset = 0x0;
         accelerationBuildOffsetInfo.firstVertex = 0;
         accelerationBuildOffsetInfo.transformOffset = 0x0;
@@ -816,7 +816,7 @@ int main() {
         accelerationBuildGeometryInfo.scratchData.deviceAddress = buildScratchMemory.memoryAddress;
 
         VkAccelerationStructureBuildOffsetInfoKHR accelerationBuildOffsetInfo = {};
-        accelerationBuildOffsetInfo.primitiveCount = 3;
+        accelerationBuildOffsetInfo.primitiveCount = 1;
         accelerationBuildOffsetInfo.primitiveOffset = 0x0;
         accelerationBuildOffsetInfo.firstVertex = 0;
         accelerationBuildOffsetInfo.transformOffset = 0x0;
@@ -1266,10 +1266,10 @@ int main() {
         shaderBindingTable.buffer, 0, 0, shaderBindingTableSize
     };
     VkStridedBufferRegionKHR rayMissSBT = {
-        shaderBindingTable.buffer, 2 * shaderBindingTableSize, 0, shaderBindingTableSize
+        shaderBindingTable.buffer, 2 * rayTracingProperties.shaderGroupHandleSize, 0, shaderBindingTableSize
     };
     VkStridedBufferRegionKHR rayHitSBT = {
-        shaderBindingTable.buffer, 1 * shaderBindingTableSize, 0, shaderBindingTableSize
+        shaderBindingTable.buffer, 1 * rayTracingProperties.shaderGroupHandleSize, 0, shaderBindingTableSize
     };
     VkStridedBufferRegionKHR rayCallSBT = {
         VK_NULL_HANDLE, 0, 0, 0
