@@ -882,6 +882,8 @@ int main() {
 
     // offscreen buffer
     {
+        std::cout << "Creating Offsceen Buffer.." << std::endl;
+
         VkImageCreateInfo imageInfo = {};
         imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         imageInfo.pNext = nullptr;
@@ -938,6 +940,8 @@ int main() {
 
     // rt descriptor set layout
     {
+        std::cout << "Creating RT Descriptor Set Layout.." << std::endl;
+
         VkDescriptorSetLayoutBinding accelerationStructureLayoutBinding = {};
         accelerationStructureLayoutBinding.binding = 0;
         accelerationStructureLayoutBinding.descriptorType =
@@ -968,6 +972,8 @@ int main() {
 
     // rt descriptor set
     {
+        std::cout << "Creating RT Descriptor Set.." << std::endl;
+
         std::vector<VkDescriptorPoolSize> poolSizes(
             {{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1},
              {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}});
@@ -1177,6 +1183,8 @@ int main() {
         vkUnmapMemory(device, shaderBindingTable.memory);
     }
 
+    std::cout << "Initializing Swapchain.." << std::endl;
+
     uint32_t presentModeCount = 0;
     ASSERT_VK_RESULT(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface,
                                                                &presentModeCount, nullptr));
@@ -1235,6 +1243,8 @@ int main() {
 
         ASSERT_VK_RESULT(vkCreateImageView(device, &imageViewInfo, nullptr, &imageViews[ii]));
     };
+
+    std::cout << "Recording frame commands.." << std::endl;
 
     VkCommandBufferAllocateInfo cmdBufferAllocInfo = {};
     cmdBufferAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -1336,7 +1346,8 @@ int main() {
     ASSERT_VK_RESULT(
         vkCreateSemaphore(device, &semaphoreInfo, nullptr, &semaphoreRenderingAvailable));
 
-    std::cout << "Running.." << std::endl;
+    std::cout << "Done!" << std::endl;
+    std::cout << "Drawing.." << std::endl;
 
     MSG msg;
     bool quitMessageReceived = false;
