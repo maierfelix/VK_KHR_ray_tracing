@@ -1,6 +1,8 @@
 # VK_KHR_ray_tracing
 Simple triangle using the new VK_KHR_ray_tracing extension
 
+<img src="https://i.imgur.com/T97yoVX.png" width="558"/>
+
 # Build Requirements
 
 ## Windows
