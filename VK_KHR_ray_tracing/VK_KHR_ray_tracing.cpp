@@ -8,6 +8,9 @@
 #include <pathcch.h>
 #pragma comment(lib, "Pathcch.lib")
 
+#include <Shlwapi.h>;
+#pragma comment(lib, "Shlwapi.lib")
+
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -135,6 +138,18 @@ std::vector<const char*> deviceExtensions({
     VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME
 });
 // clang-format on
+
+std::string GetExecutablePath() {
+    wchar_t path[MAX_PATH + 1];
+    DWORD result = GetModuleFileName(NULL, path, sizeof(path) - 1);
+    if (result == 0 || result == sizeof(path) - 1)
+        return "";
+    path[MAX_PATH - 1] = 0;
+    PathRemoveFileSpecW(path);
+    std::wstring ws(path);
+    std::string out(ws.begin(), ws.end());
+    return out;
+}
 
 VkShaderModule CreateShaderModule(std::vector<char>& code) {
     VkShaderModule shaderModule = VK_NULL_HANDLE;
@@ -1035,9 +1050,11 @@ int main() {
     {
         std::cout << "Creating RT Pipeline.." << std::endl;
 
-        std::vector<char> rgenShaderSrc = readFile("../shaders/ray-generation.spv");
-        std::vector<char> rchitShaderSrc = readFile("../shaders/ray-closest-hit.spv");
-        std::vector<char> rmissShaderSrc = readFile("../shaders/ray-miss.spv");
+        std::string basePath = GetExecutablePath() + "/../../shaders";
+
+        std::vector<char> rgenShaderSrc = readFile(basePath + "/ray-generation.spv");
+        std::vector<char> rchitShaderSrc = readFile(basePath + "/ray-closest-hit.spv");
+        std::vector<char> rmissShaderSrc = readFile(basePath + "/ray-miss.spv");
 
         VkPipelineShaderStageCreateInfo rayGenShaderStageInfo = {};
         rayGenShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
