@@ -160,7 +160,7 @@ uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
 }
 
 uint64_t GetBufferAddress(VkBuffer buffer) {
-    PFN_vkGetBufferDeviceAddressKHR vkGetBufferDeviceAddressKHR;
+    PFN_vkGetBufferDeviceAddressKHR vkGetBufferDeviceAddressKHR = nullptr;
     RESOLVE_VK_DEVICE_PFN(device, vkGetBufferDeviceAddressKHR);
 
     VkBufferDeviceAddressInfoKHR bufferAddressInfo = {};
@@ -223,7 +223,7 @@ VkMemoryRequirements GetAccelerationStructureMemoryRequirements(
     VkMemoryRequirements2 memoryRequirements2 = {};
 
     PFN_vkGetAccelerationStructureMemoryRequirementsKHR
-        vkGetAccelerationStructureMemoryRequirementsKHR;
+        vkGetAccelerationStructureMemoryRequirementsKHR = nullptr;
     RESOLVE_VK_DEVICE_PFN(device, vkGetAccelerationStructureMemoryRequirementsKHR);
 
     VkAccelerationStructureMemoryRequirementsInfoKHR accelerationMemoryRequirements = {};
@@ -264,7 +264,7 @@ AccelerationMemory CreateAccelerationScratchBuffer(
     AccelerationMemory out = {};
 
     PFN_vkGetAccelerationStructureMemoryRequirementsKHR
-        vkGetAccelerationStructureMemoryRequirementsKHR;
+        vkGetAccelerationStructureMemoryRequirementsKHR = nullptr;
     RESOLVE_VK_DEVICE_PFN(device, vkGetAccelerationStructureMemoryRequirementsKHR);
 
     VkMemoryRequirements2 memoryRequirements2 = {};
@@ -351,21 +351,21 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 int main() {
     // clang-format off
-    PFN_vkGetPhysicalDeviceSurfaceSupportKHR vkGetPhysicalDeviceSurfaceSupportKHR;
-    PFN_vkGetPhysicalDeviceSurfaceFormatsKHR vkGetPhysicalDeviceSurfaceFormatsKHR;
+    PFN_vkGetPhysicalDeviceSurfaceSupportKHR vkGetPhysicalDeviceSurfaceSupportKHR = nullptr;
+    PFN_vkGetPhysicalDeviceSurfaceFormatsKHR vkGetPhysicalDeviceSurfaceFormatsKHR = nullptr;
 
-    PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR;
-    PFN_vkGetSwapchainImagesKHR vkGetSwapchainImagesKHR;
+    PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR = nullptr;
+    PFN_vkGetSwapchainImagesKHR vkGetSwapchainImagesKHR = nullptr;
 
-    PFN_vkCreateAccelerationStructureKHR vkCreateAccelerationStructureKHR;
-    PFN_vkCreateRayTracingPipelinesKHR vkCreateRayTracingPipelinesKHR;
-    PFN_vkBindAccelerationStructureMemoryKHR vkBindAccelerationStructureMemoryKHR;
-    PFN_vkCmdBuildAccelerationStructureKHR vkCmdBuildAccelerationStructureKHR;
-    PFN_vkDestroyAccelerationStructureKHR vkDestroyAccelerationStructureKHR;
-    PFN_vkGetRayTracingShaderGroupHandlesKHR vkGetRayTracingShaderGroupHandlesKHR;
-    PFN_vkCmdTraceRaysKHR vkCmdTraceRaysKHR;
+    PFN_vkCreateAccelerationStructureKHR vkCreateAccelerationStructureKHR = nullptr;
+    PFN_vkCreateRayTracingPipelinesKHR vkCreateRayTracingPipelinesKHR = nullptr;
+    PFN_vkBindAccelerationStructureMemoryKHR vkBindAccelerationStructureMemoryKHR = nullptr;
+    PFN_vkCmdBuildAccelerationStructureKHR vkCmdBuildAccelerationStructureKHR = nullptr;
+    PFN_vkDestroyAccelerationStructureKHR vkDestroyAccelerationStructureKHR = nullptr;
+    PFN_vkGetRayTracingShaderGroupHandlesKHR vkGetRayTracingShaderGroupHandlesKHR = nullptr;
+    PFN_vkCmdTraceRaysKHR vkCmdTraceRaysKHR = nullptr;
 
-    PFN_vkGetAccelerationStructureDeviceAddressKHR vkGetAccelerationStructureDeviceAddressKHR;
+    PFN_vkGetAccelerationStructureDeviceAddressKHR vkGetAccelerationStructureDeviceAddressKHR = nullptr;
     // clang-format on
 
     TCHAR dest[MAX_PATH];
@@ -615,9 +615,9 @@ int main() {
 
         // clang-format off
         std::vector<float> vertices = {
-            +1.0f, +1.0f, +0.0f, +0.0f,
-            -1.0f, +1.0f, +0.0f, +0.0f,
-            +0.0f, -1.0f, +0.0f, +0.0f
+            +1.0f, +1.0f, +0.0f,
+            -1.0f, +1.0f, +0.0f,
+            +0.0f, -1.0f, +0.0f
         };
         std::vector<uint32_t> indices = {
             0, 1, 2
@@ -643,12 +643,10 @@ int main() {
         accelerationGeometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
         accelerationGeometry.geometry.triangles.vertexData.deviceAddress =
             vertexBuffer.memoryAddress;
-        accelerationGeometry.geometry.triangles.vertexStride = 4 * sizeof(float);
+        accelerationGeometry.geometry.triangles.vertexStride = 3 * sizeof(float);
         accelerationGeometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
         accelerationGeometry.geometry.triangles.indexData.deviceAddress = indexBuffer.memoryAddress;
-        accelerationGeometry.geometry.triangles.indexData.hostAddress = nullptr;
         accelerationGeometry.geometry.triangles.transformData.deviceAddress = 0;
-        accelerationGeometry.geometry.triangles.transformData.hostAddress = nullptr;
 
         std::vector<VkAccelerationStructureGeometryKHR> accelerationGeometries(
             {accelerationGeometry});
@@ -668,7 +666,6 @@ int main() {
         accelerationBuildGeometryInfo.geometryCount = 1;
         accelerationBuildGeometryInfo.ppGeometries = &ppGeometries;
         accelerationBuildGeometryInfo.scratchData.deviceAddress = buildScratchMemory.memoryAddress;
-        accelerationBuildGeometryInfo.scratchData.hostAddress = nullptr;
 
         VkAccelerationStructureBuildOffsetInfoKHR accelerationBuildOffsetInfo = {};
         accelerationBuildOffsetInfo.primitiveCount = 3;
@@ -734,11 +731,10 @@ int main() {
             std::cout << "Invalid Handle to BLAS" << std::endl;
             return EXIT_FAILURE;
         }
-
     }
 
     // create top-level container
-    if (false) {
+    {
         std::cout << "Creating Top-Level Acceleration Structure.." << std::endl;
 
         VkAccelerationStructureCreateGeometryTypeInfoKHR accelerationCreateGeometryInfo = {};
@@ -765,13 +761,33 @@ int main() {
         ASSERT_VK_RESULT(
             vkCreateAccelerationStructureKHR(device, &accelerationInfo, nullptr, &topLevelAS));
 
+        AccelerationMemory objectMemory = CreateAccelerationMemory(
+            topLevelAS, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_KHR);
+
+        AccelerationMemory buildScratchMemory = CreateAccelerationScratchBuffer(
+            topLevelAS, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_KHR);
+
+        // bind object memory to the AS
+        VkBindAccelerationStructureMemoryInfoKHR accelerationMemoryBindInfo = {};
+        accelerationMemoryBindInfo.sType =
+            VK_STRUCTURE_TYPE_BIND_ACCELERATION_STRUCTURE_MEMORY_INFO_KHR;
+        accelerationMemoryBindInfo.pNext = nullptr;
+        accelerationMemoryBindInfo.accelerationStructure = topLevelAS;
+        accelerationMemoryBindInfo.memory = objectMemory.memory;
+        accelerationMemoryBindInfo.memoryOffset = 0;
+        accelerationMemoryBindInfo.deviceIndexCount = 0;
+        accelerationMemoryBindInfo.pDeviceIndices = nullptr;
+
+        ASSERT_VK_RESULT(
+            vkBindAccelerationStructureMemoryKHR(device, 1, &accelerationMemoryBindInfo));
+
         std::vector<VkAccelerationStructureInstanceKHR> instances(
-            { {{1.0f, 0.0f, 0.0, 0.0f, 0.0f, 1.0f, 0.0, 0.0f, 0.0f, 0.0f, 1.0, 0.0f},
+            {{{1.0f, 0.0f, 0.0, 0.0f, 0.0f, 1.0f, 0.0, 0.0f, 0.0f, 0.0f, 1.0, 0.0f},
               0,
               0xFF,
               0x0,
               VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
-              bottomLevelASHandle} });
+              bottomLevelASHandle}});
 
         MappedBuffer instanceBuffer = CreateMappedBuffer(
             instances.data(), sizeof(VkAccelerationStructureInstanceKHR) * instances.size());
@@ -784,32 +800,29 @@ int main() {
         accelerationGeometry.geometry = {};
         accelerationGeometry.geometry.instances = {};
         accelerationGeometry.geometry.instances.sType =
-        VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
+            VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
         accelerationGeometry.geometry.instances.pNext = nullptr;
         accelerationGeometry.geometry.instances.arrayOfPointers = VK_FALSE;
         accelerationGeometry.geometry.instances.data.deviceAddress = instanceBuffer.memoryAddress;
-        accelerationGeometry.geometry.instances.data.hostAddress = nullptr;
 
-        std::vector<VkAccelerationStructureGeometryKHR*> accelerationGeometries(
-            { &accelerationGeometry });
-
-        AccelerationMemory scratchMemory = CreateAccelerationMemory(
-            topLevelAS, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_KHR);
+        std::vector<VkAccelerationStructureGeometryKHR> accelerationGeometries(
+            {accelerationGeometry});
+        const VkAccelerationStructureGeometryKHR* ppGeometries = accelerationGeometries.data();
 
         VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo = {};
         accelerationBuildGeometryInfo.sType =
-        VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+            VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
         accelerationBuildGeometryInfo.pNext = nullptr;
         accelerationBuildGeometryInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
         accelerationBuildGeometryInfo.flags =
-        VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+            VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
         accelerationBuildGeometryInfo.update = VK_FALSE;
         accelerationBuildGeometryInfo.srcAccelerationStructure = VK_NULL_HANDLE;
         accelerationBuildGeometryInfo.dstAccelerationStructure = topLevelAS;
-        accelerationBuildGeometryInfo.geometryArrayOfPointers = VK_TRUE;
+        accelerationBuildGeometryInfo.geometryArrayOfPointers = VK_FALSE;
         accelerationBuildGeometryInfo.geometryCount = 1;
-        accelerationBuildGeometryInfo.ppGeometries = accelerationGeometries.data();
-        accelerationBuildGeometryInfo.scratchData.deviceAddress = scratchMemory.memoryAddress;
+        accelerationBuildGeometryInfo.ppGeometries = &ppGeometries;
+        accelerationBuildGeometryInfo.scratchData.deviceAddress = buildScratchMemory.memoryAddress;
 
         VkAccelerationStructureBuildOffsetInfoKHR accelerationBuildOffsetInfo = {};
         accelerationBuildOffsetInfo.primitiveCount = 3;
@@ -862,7 +875,7 @@ int main() {
     }
 
     // offscreen buffer
-    if (false) {
+    {
         VkImageCreateInfo imageInfo = {};
         imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         imageInfo.pNext = nullptr;
@@ -918,7 +931,7 @@ int main() {
     }
 
     // rt descriptor set layout
-    if (false) {
+    {
         VkDescriptorSetLayoutBinding accelerationStructureLayoutBinding = {};
         accelerationStructureLayoutBinding.binding = 0;
         accelerationStructureLayoutBinding.descriptorType =
@@ -948,7 +961,7 @@ int main() {
     }
 
     // rt descriptor set
-    if (false) {
+    {
         std::vector<VkDescriptorPoolSize> poolSizes(
             {{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1},
              {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}});
@@ -1011,7 +1024,7 @@ int main() {
     }
 
     // rt pipeline layout
-    if (false) {
+    {
         std::cout << "Creating RT Pipeline Layout.." << std::endl;
 
         VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
@@ -1028,7 +1041,7 @@ int main() {
     }
 
     // rt pipeline
-    if (false) {
+    {
         std::cout << "Creating RT Pipeline.." << std::endl;
 
         std::vector<char> rgenShaderSrc = readFile("../shaders/ray-generation.spv");
@@ -1087,7 +1100,7 @@ int main() {
         rayMissGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
 
         std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups = {rayGenGroup, rayHitGroup,
-                                                                         rayMissGroup};
+                                                                          rayMissGroup};
 
         VkRayTracingPipelineCreateInfoKHR pipelineInfo = {};
         pipelineInfo.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
@@ -1113,7 +1126,7 @@ int main() {
     }
 
     // shader binding table
-    if (false) {
+    {
         std::cout << "Creating Shader Binding Table.." << std::endl;
 
         uint32_t groupNum = 3;
@@ -1171,7 +1184,7 @@ int main() {
     swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     swapchainInfo.pNext = nullptr;
     swapchainInfo.surface = surface;
-    swapchainInfo.minImageCount = 3; 
+    swapchainInfo.minImageCount = 3;
     swapchainInfo.imageFormat = desiredSurfaceFormat;
     swapchainInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
     swapchainInfo.imageExtent.width = desiredWindowWidth;
@@ -1259,13 +1272,13 @@ int main() {
     uint32_t shaderBindingTableSize = groupNum * rayTracingProperties.shaderGroupHandleSize;
     // clang-format off
     VkStridedBufferRegionKHR rayGenSBT = {
-        shaderBindingTable.buffer, 0, shaderBindingTableSize
+        shaderBindingTable.buffer, 0, 0, shaderBindingTableSize
     };
     VkStridedBufferRegionKHR rayMissSBT = {
-        shaderBindingTable.buffer, 2 * shaderBindingTableSize, shaderBindingTableSize
+        shaderBindingTable.buffer, 2 * shaderBindingTableSize, 0, shaderBindingTableSize
     };
     VkStridedBufferRegionKHR rayHitSBT = {
-        shaderBindingTable.buffer, 1 * shaderBindingTableSize, shaderBindingTableSize
+        shaderBindingTable.buffer, 1 * shaderBindingTableSize, 0, shaderBindingTableSize
     };
     VkStridedBufferRegionKHR rayCallSBT = {
         VK_NULL_HANDLE, 0, 0, 0
@@ -1279,10 +1292,10 @@ int main() {
         ASSERT_VK_RESULT(vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo));
 
         // transition offscreen buffer into shader writeable state
-        /*InsertCommandImageBarrier(commandBuffer, offscreenBuffer, 0, VK_ACCESS_SHADER_WRITE_BIT,
+        InsertCommandImageBarrier(commandBuffer, offscreenBuffer, 0, VK_ACCESS_SHADER_WRITE_BIT,
                                   VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
                                   subresourceRange);
-        
+
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline);
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
                                 pipelineLayout, 0, 1, &descriptorSet, 0, 0);
@@ -1301,20 +1314,8 @@ int main() {
 
         // copy offscreen buffer into swapchain image
         vkCmdCopyImage(commandBuffer, offscreenBuffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                       swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);*/
+                       swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 
-        InsertCommandImageBarrier(commandBuffer, swapchainImage, VK_ACCESS_MEMORY_READ_BIT,
-                                  VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
-                                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, subresourceRange);
-
-        VkClearColorValue clearColor = {{0.4f, 0.6f, 0.9f, 1.0f}};
-        vkCmdClearColorImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                             &clearColor, 1, &subresourceRange);
-
-        // make swapchain image presentable
-        InsertCommandImageBarrier(commandBuffer, swapchainImage, VK_ACCESS_TRANSFER_WRITE_BIT, 0,
-                                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                  VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, subresourceRange);
         ASSERT_VK_RESULT(vkEndCommandBuffer(commandBuffer));
     };
 
@@ -1342,8 +1343,8 @@ int main() {
         }
         if (!quitMessageReceived) {
             uint32_t imageIndex = 0;
-            ASSERT_VK_RESULT(vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, semaphoreImageAvailable, nullptr,
-                                  &imageIndex));
+            ASSERT_VK_RESULT(vkAcquireNextImageKHR(device, swapchain, UINT64_MAX,
+                                                   semaphoreImageAvailable, nullptr, &imageIndex));
 
             VkPipelineStageFlags waitStageMasks[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 
