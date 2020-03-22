@@ -1,8 +1,8 @@
 #include <Windows.h>
 
 #define VK_ENABLE_BETA_EXTENSIONS
+#define VK_USE_PLATFORM_WIN32_KHR
 #include <vulkan/vulkan.h>
-#include <vulkan/vulkan_win32.h>
 #pragma comment(lib, "vulkan-1.lib")
 
 #include <pathcch.h>
@@ -258,6 +258,23 @@ AccelerationMemory CreateAccelerationMemory(VkAccelerationStructureKHR accelerat
     return out;
 }
 
+void BindAccelerationMemory(VkAccelerationStructureKHR acceleration, VkDeviceMemory memory) {
+    PFN_vkBindAccelerationStructureMemoryKHR vkBindAccelerationStructureMemoryKHR = nullptr;
+    RESOLVE_VK_DEVICE_PFN(device, vkBindAccelerationStructureMemoryKHR);
+
+    VkBindAccelerationStructureMemoryInfoKHR accelerationMemoryBindInfo = {};
+    accelerationMemoryBindInfo.sType =
+        VK_STRUCTURE_TYPE_BIND_ACCELERATION_STRUCTURE_MEMORY_INFO_KHR;
+    accelerationMemoryBindInfo.pNext = nullptr;
+    accelerationMemoryBindInfo.accelerationStructure = acceleration;
+    accelerationMemoryBindInfo.memory = memory;
+    accelerationMemoryBindInfo.memoryOffset = 0;
+    accelerationMemoryBindInfo.deviceIndexCount = 0;
+    accelerationMemoryBindInfo.pDeviceIndices = nullptr;
+
+    ASSERT_VK_RESULT(vkBindAccelerationStructureMemoryKHR(device, 1, &accelerationMemoryBindInfo));
+}
+
 AccelerationMemory CreateAccelerationScratchBuffer(
     VkAccelerationStructureKHR acceleration,
     VkAccelerationStructureMemoryRequirementsTypeKHR type) {
@@ -359,7 +376,6 @@ int main() {
 
     PFN_vkCreateAccelerationStructureKHR vkCreateAccelerationStructureKHR = nullptr;
     PFN_vkCreateRayTracingPipelinesKHR vkCreateRayTracingPipelinesKHR = nullptr;
-    PFN_vkBindAccelerationStructureMemoryKHR vkBindAccelerationStructureMemoryKHR = nullptr;
     PFN_vkCmdBuildAccelerationStructureKHR vkCmdBuildAccelerationStructureKHR = nullptr;
     PFN_vkDestroyAccelerationStructureKHR vkDestroyAccelerationStructureKHR = nullptr;
     PFN_vkGetRayTracingShaderGroupHandlesKHR vkGetRayTracingShaderGroupHandlesKHR = nullptr;
@@ -495,7 +511,6 @@ int main() {
 
     RESOLVE_VK_DEVICE_PFN(device, vkCreateAccelerationStructureKHR);
     RESOLVE_VK_DEVICE_PFN(device, vkCreateRayTracingPipelinesKHR);
-    RESOLVE_VK_DEVICE_PFN(device, vkBindAccelerationStructureMemoryKHR);
     RESOLVE_VK_DEVICE_PFN(device, vkCmdBuildAccelerationStructureKHR);
     RESOLVE_VK_DEVICE_PFN(device, vkDestroyAccelerationStructureKHR);
     RESOLVE_VK_DEVICE_PFN(device, vkGetRayTracingShaderGroupHandlesKHR);
@@ -590,22 +605,10 @@ int main() {
         AccelerationMemory objectMemory = CreateAccelerationMemory(
             bottomLevelAS, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_KHR);
 
+        BindAccelerationMemory(bottomLevelAS, objectMemory.memory);
+
         AccelerationMemory buildScratchMemory = CreateAccelerationScratchBuffer(
             bottomLevelAS, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_KHR);
-
-        // bind object memory to the AS
-        VkBindAccelerationStructureMemoryInfoKHR accelerationMemoryBindInfo = {};
-        accelerationMemoryBindInfo.sType =
-            VK_STRUCTURE_TYPE_BIND_ACCELERATION_STRUCTURE_MEMORY_INFO_KHR;
-        accelerationMemoryBindInfo.pNext = nullptr;
-        accelerationMemoryBindInfo.accelerationStructure = bottomLevelAS;
-        accelerationMemoryBindInfo.memory = objectMemory.memory;
-        accelerationMemoryBindInfo.memoryOffset = 0;
-        accelerationMemoryBindInfo.deviceIndexCount = 0;
-        accelerationMemoryBindInfo.pDeviceIndices = nullptr;
-
-        ASSERT_VK_RESULT(
-            vkBindAccelerationStructureMemoryKHR(device, 1, &accelerationMemoryBindInfo));
 
         // Get bottom level acceleration structure handle for use in top level instances
         VkAccelerationStructureDeviceAddressInfoKHR devAddrInfo{};
@@ -764,22 +767,10 @@ int main() {
         AccelerationMemory objectMemory = CreateAccelerationMemory(
             topLevelAS, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_KHR);
 
+        BindAccelerationMemory(topLevelAS, objectMemory.memory);
+
         AccelerationMemory buildScratchMemory = CreateAccelerationScratchBuffer(
             topLevelAS, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_KHR);
-
-        // bind object memory to the AS
-        VkBindAccelerationStructureMemoryInfoKHR accelerationMemoryBindInfo = {};
-        accelerationMemoryBindInfo.sType =
-            VK_STRUCTURE_TYPE_BIND_ACCELERATION_STRUCTURE_MEMORY_INFO_KHR;
-        accelerationMemoryBindInfo.pNext = nullptr;
-        accelerationMemoryBindInfo.accelerationStructure = topLevelAS;
-        accelerationMemoryBindInfo.memory = objectMemory.memory;
-        accelerationMemoryBindInfo.memoryOffset = 0;
-        accelerationMemoryBindInfo.deviceIndexCount = 0;
-        accelerationMemoryBindInfo.pDeviceIndices = nullptr;
-
-        ASSERT_VK_RESULT(
-            vkBindAccelerationStructureMemoryKHR(device, 1, &accelerationMemoryBindInfo));
 
         std::vector<VkAccelerationStructureInstanceKHR> instances(
             {{{1.0f, 0.0f, 0.0, 0.0f, 0.0f, 1.0f, 0.0, 0.0f, 0.0f, 0.0f, 1.0, 0.0f},
