@@ -384,7 +384,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 int main() {
     // clang-format off
     PFN_vkGetPhysicalDeviceSurfaceSupportKHR vkGetPhysicalDeviceSurfaceSupportKHR = nullptr;
-    PFN_vkGetPhysicalDeviceSurfaceFormatsKHR vkGetPhysicalDeviceSurfaceFormatsKHR = nullptr;
 
     PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR = nullptr;
     PFN_vkGetSwapchainImagesKHR vkGetSwapchainImagesKHR = nullptr;
@@ -519,7 +518,6 @@ int main() {
 
     // clang-format off
     RESOLVE_VK_INSTANCE_PFN(instance, vkGetPhysicalDeviceSurfaceSupportKHR);
-    RESOLVE_VK_INSTANCE_PFN(instance, vkGetPhysicalDeviceSurfaceFormatsKHR);
 
     RESOLVE_VK_DEVICE_PFN(device, vkCreateSwapchainKHR);
     RESOLVE_VK_DEVICE_PFN(device, vkGetSwapchainImagesKHR);
@@ -541,18 +539,6 @@ int main() {
     surfaceCreateInfo.hwnd = window;
 
     ASSERT_VK_RESULT(vkCreateWin32SurfaceKHR(instance, &surfaceCreateInfo, nullptr, &surface));
-
-    uint32_t queueFamilyCount = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
-    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount,
-                                             queueFamilies.data());
-
-    uint32_t surfaceFormatCount = 0;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, nullptr);
-    std::vector<VkSurfaceFormatKHR> surfaceFormats(surfaceFormatCount);
-    vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount,
-                                         surfaceFormats.data());
 
     VkBool32 surfaceSupport = false;
     vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, 0, surface, &surfaceSupport);
@@ -733,16 +719,6 @@ int main() {
 
         vkDestroyFence(device, fence, nullptr);
         vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
-
-        // take handle of the BLAS to later link to our TLAS
-        VkAccelerationStructureDeviceAddressInfoKHR accelerationDeviceAddressInfo = {};
-        accelerationDeviceAddressInfo.sType =
-            VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
-        accelerationDeviceAddressInfo.pNext = nullptr;
-        accelerationDeviceAddressInfo.accelerationStructure = bottomLevelAS;
-
-        bottomLevelASHandle =
-            vkGetAccelerationStructureDeviceAddressKHR(device, &accelerationDeviceAddressInfo);
 
         // make sure bottom AS handle is valid
         if (bottomLevelASHandle == 0) {
