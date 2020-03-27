@@ -295,13 +295,13 @@ AccelerationMemory CreateAccelerationScratchBuffer(
     VkAccelerationStructureMemoryRequirementsTypeKHR type) {
     AccelerationMemory out = {};
 
-    VkMemoryRequirements asMemoryRequirements =
+    VkMemoryRequirements asRequirements =
         GetAccelerationStructureMemoryRequirements(acceleration, type);
 
     VkBufferCreateInfo bufferInfo = {};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.pNext = nullptr;
-    bufferInfo.size = asMemoryRequirements.size;
+    bufferInfo.size = asRequirements.size;
     bufferInfo.usage =
         VK_BUFFER_USAGE_RAY_TRACING_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -309,13 +309,14 @@ AccelerationMemory CreateAccelerationScratchBuffer(
     bufferInfo.pQueueFamilyIndices = nullptr;
     ASSERT_VK_RESULT(vkCreateBuffer(device, &bufferInfo, nullptr, &out.buffer));
 
-    VkMemoryRequirements bufferMemoryRequirements = {};
-    vkGetBufferMemoryRequirements(device, out.buffer, &bufferMemoryRequirements);
+    VkMemoryRequirements bufRequirements = {};
+    vkGetBufferMemoryRequirements(device, out.buffer, &bufRequirements);
 
-    // buffer requirements can exceed AS requirements, so we max them
-    uint64_t allocationSize = asMemoryRequirements.size > bufferMemoryRequirements.size
-                                  ? asMemoryRequirements.size
-                                  : bufferMemoryRequirements.size;
+    // buffer requirements can differ to AS requirements, so we max them
+    uint64_t alloctionSize =
+        asRequirements.size > bufRequirements.size ? asRequirements.size : bufRequirements.size;
+    // combine AS and buf mem types
+    uint32_t allocationMemoryBits = bufRequirements.memoryTypeBits | asRequirements.memoryTypeBits;
 
     VkMemoryAllocateFlagsInfo memAllocFlagsInfo = {};
     memAllocFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
@@ -326,9 +327,9 @@ AccelerationMemory CreateAccelerationScratchBuffer(
     VkMemoryAllocateInfo memAllocInfo = {};
     memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     memAllocInfo.pNext = &memAllocFlagsInfo;
-    memAllocInfo.allocationSize = allocationSize;
-    memAllocInfo.memoryTypeIndex = FindMemoryType(
-        asMemoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    memAllocInfo.allocationSize = alloctionSize;
+    memAllocInfo.memoryTypeIndex =
+        FindMemoryType(allocationMemoryBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     ASSERT_VK_RESULT(vkAllocateMemory(device, &memAllocInfo, nullptr, &out.memory));
 
     ASSERT_VK_RESULT(vkBindBufferMemory(device, out.buffer, out.memory, 0));
