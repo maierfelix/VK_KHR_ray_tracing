@@ -295,26 +295,13 @@ AccelerationMemory CreateAccelerationScratchBuffer(
     VkAccelerationStructureMemoryRequirementsTypeKHR type) {
     AccelerationMemory out = {};
 
-    PFN_vkGetAccelerationStructureMemoryRequirementsKHR
-        vkGetAccelerationStructureMemoryRequirementsKHR = nullptr;
-    RESOLVE_VK_DEVICE_PFN(device, vkGetAccelerationStructureMemoryRequirementsKHR);
-
-    VkMemoryRequirements2 memoryRequirements2 = {};
-
-    VkAccelerationStructureMemoryRequirementsInfoKHR accelerationMemoryRequirements = {};
-    accelerationMemoryRequirements.sType =
-        VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_INFO_KHR;
-    accelerationMemoryRequirements.pNext = nullptr;
-    accelerationMemoryRequirements.type = type;
-    accelerationMemoryRequirements.buildType = VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR;
-    accelerationMemoryRequirements.accelerationStructure = acceleration;
-    vkGetAccelerationStructureMemoryRequirementsKHR(device, &accelerationMemoryRequirements,
-                                                    &memoryRequirements2);
+    VkMemoryRequirements asMemoryRequirements =
+        GetAccelerationStructureMemoryRequirements(acceleration, type);
 
     VkBufferCreateInfo bufferInfo = {};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.pNext = nullptr;
-    bufferInfo.size = memoryRequirements2.memoryRequirements.size;
+    bufferInfo.size = asMemoryRequirements.size;
     bufferInfo.usage =
         VK_BUFFER_USAGE_RAY_TRACING_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -322,8 +309,13 @@ AccelerationMemory CreateAccelerationScratchBuffer(
     bufferInfo.pQueueFamilyIndices = nullptr;
     ASSERT_VK_RESULT(vkCreateBuffer(device, &bufferInfo, nullptr, &out.buffer));
 
-    VkMemoryRequirements memoryRequirements = {};
-    vkGetBufferMemoryRequirements(device, out.buffer, &memoryRequirements);
+    VkMemoryRequirements bufferMemoryRequirements = {};
+    vkGetBufferMemoryRequirements(device, out.buffer, &bufferMemoryRequirements);
+
+    // buffer requirements can exceed AS requirements, so we max them
+    uint64_t allocationSize = asMemoryRequirements.size > bufferMemoryRequirements.size
+                                  ? asMemoryRequirements.size
+                                  : bufferMemoryRequirements.size;
 
     VkMemoryAllocateFlagsInfo memAllocFlagsInfo = {};
     memAllocFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
@@ -334,9 +326,9 @@ AccelerationMemory CreateAccelerationScratchBuffer(
     VkMemoryAllocateInfo memAllocInfo = {};
     memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     memAllocInfo.pNext = &memAllocFlagsInfo;
-    memAllocInfo.allocationSize = memoryRequirements.size;
+    memAllocInfo.allocationSize = allocationSize;
     memAllocInfo.memoryTypeIndex = FindMemoryType(
-        memoryRequirements2.memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        asMemoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     ASSERT_VK_RESULT(vkAllocateMemory(device, &memAllocInfo, nullptr, &out.memory));
 
     ASSERT_VK_RESULT(vkBindBufferMemory(device, out.buffer, out.memory, 0));
