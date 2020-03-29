@@ -95,6 +95,8 @@ VkImageView offscreenBufferView;
 VkDeviceMemory offscreenBufferMemory;
 
 MappedBuffer shaderBindingTable = {};
+uint32_t shaderBindingTableSize = 0;
+uint32_t shaderBindingTableGroupCount = 3;
 
 VkAccelerationStructureKHR bottomLevelAS = VK_NULL_HANDLE;
 uint64_t bottomLevelASHandle = 0;
@@ -1112,10 +1114,9 @@ int main() {
     {
         std::cout << "Creating Shader Binding Table.." << std::endl;
 
-        uint32_t groupNum = 3;
-        uint32_t shaderBindingTableSize = groupNum * rayTracingProperties.shaderGroupHandleSize;
-
         shaderBindingTable = {};
+        shaderBindingTableSize =
+            shaderBindingTableGroupCount * rayTracingProperties.shaderGroupHandleSize;
 
         VkBufferCreateInfo bufferInfo = {};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -1147,8 +1148,8 @@ int main() {
         ASSERT_VK_RESULT(
             vkMapMemory(device, shaderBindingTable.memory, 0, shaderBindingTableSize, 0, &dstData));
 
-        vkGetRayTracingShaderGroupHandlesKHR(device, pipeline, 0, groupNum, shaderBindingTableSize,
-                                             dstData);
+        vkGetRayTracingShaderGroupHandlesKHR(device, pipeline, 0, shaderBindingTableGroupCount,
+                                             shaderBindingTableSize, dstData);
         vkUnmapMemory(device, shaderBindingTable.memory);
     }
 
@@ -1215,23 +1216,6 @@ int main() {
 
     std::cout << "Recording frame commands.." << std::endl;
 
-    VkCommandBufferAllocateInfo cmdBufferAllocInfo = {};
-    cmdBufferAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cmdBufferAllocInfo.pNext = nullptr;
-    cmdBufferAllocInfo.commandPool = commandPool;
-    cmdBufferAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cmdBufferAllocInfo.commandBufferCount = amountOfImagesInSwapchain;
-
-    commandBuffers = std::vector<VkCommandBuffer>(amountOfImagesInSwapchain);
-
-    ASSERT_VK_RESULT(vkAllocateCommandBuffers(device, &cmdBufferAllocInfo, commandBuffers.data()));
-
-    VkCommandBufferBeginInfo commandBufferBeginInfo = {};
-    commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    commandBufferBeginInfo.pNext = nullptr;
-    commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
-    commandBufferBeginInfo.pInheritanceInfo = nullptr;
-
     VkImageCopy copyRegion = {};
     copyRegion.srcSubresource = {};
     copyRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -1254,9 +1238,6 @@ int main() {
     subresourceRange.baseArrayLayer = 0;
     subresourceRange.layerCount = 1;
 
-    // sbt offsets
-    uint32_t groupNum = 3;
-    uint32_t shaderBindingTableSize = groupNum * rayTracingProperties.shaderGroupHandleSize;
     // clang-format off
     VkStridedBufferRegionKHR rayGenSBT = {
         shaderBindingTable.buffer, 0, 0, shaderBindingTableSize
@@ -1271,6 +1252,24 @@ int main() {
         VK_NULL_HANDLE, 0, 0, 0
     };
     // clang-format on
+
+    VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
+    commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    commandBufferAllocateInfo.pNext = nullptr;
+    commandBufferAllocateInfo.commandPool = commandPool;
+    commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    commandBufferAllocateInfo.commandBufferCount = amountOfImagesInSwapchain;
+
+    commandBuffers = std::vector<VkCommandBuffer>(amountOfImagesInSwapchain);
+
+    ASSERT_VK_RESULT(
+        vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, commandBuffers.data()));
+
+    VkCommandBufferBeginInfo commandBufferBeginInfo = {};
+    commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    commandBufferBeginInfo.pNext = nullptr;
+    commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    commandBufferBeginInfo.pInheritanceInfo = nullptr;
 
     for (uint32_t ii = 0; ii < amountOfImagesInSwapchain; ++ii) {
         VkCommandBuffer commandBuffer = commandBuffers[ii];
