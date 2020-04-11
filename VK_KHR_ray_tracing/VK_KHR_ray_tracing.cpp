@@ -730,12 +730,8 @@ int main() {
         accelerationCreateGeometryInfo.sType =
             VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_GEOMETRY_TYPE_INFO_KHR;
         accelerationCreateGeometryInfo.pNext = nullptr;
-        accelerationCreateGeometryInfo.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
-        accelerationCreateGeometryInfo.maxPrimitiveCount = 128;
-        accelerationCreateGeometryInfo.indexType = VK_INDEX_TYPE_UINT32;
-        accelerationCreateGeometryInfo.maxVertexCount = 8;
-        accelerationCreateGeometryInfo.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
-        accelerationCreateGeometryInfo.allowsTransforms = VK_FALSE;
+        accelerationCreateGeometryInfo.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+        accelerationCreateGeometryInfo.maxPrimitiveCount = 1;
 
         VkAccelerationStructureCreateInfoKHR accelerationInfo = {};
         accelerationInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
