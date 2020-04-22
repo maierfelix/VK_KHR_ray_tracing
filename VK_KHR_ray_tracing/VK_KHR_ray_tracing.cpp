@@ -8,7 +8,7 @@
 #include <pathcch.h>
 #pragma comment(lib, "Pathcch.lib")
 
-#include <Shlwapi.h>;
+#include <Shlwapi.h>
 #pragma comment(lib, "Shlwapi.lib")
 
 #include <fstream>
