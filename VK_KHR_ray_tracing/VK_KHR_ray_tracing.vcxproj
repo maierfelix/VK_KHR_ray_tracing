@@ -106,18 +106,21 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\third_party\vulkan\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>%VK_SDK_PATH%/Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>vulkan-1.lib;Pathcch.lib;Shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%VK_SDK_PATH%/Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y "$(SolutionDir)third_party\vulkan\lib\vulkan-1.dll" "$(TargetDir)vulkan-1.dll"
-del "$(SolutionDir)$(TargetName)\vulkan-1.lib" /q</Command>
+      <Command>
+      </Command>
     </PostBuildEvent>
     <PreLinkEvent>
-      <Command>copy /Y "$(SolutionDir)third_party\vulkan\lib\vulkan-1.lib" "$(SolutionDir)$(TargetName)\vulkan-1.lib"</Command>
+      <Command>
+      </Command>
     </PreLinkEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -148,19 +151,23 @@ del "$(SolutionDir)$(TargetName)\vulkan-1.lib" /q</Command>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\third_party\vulkan\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>%VK_SDK_PATH%/Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>vulkan-1.lib;Pathcch.lib;Shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%VK_SDK_PATH%/Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PreLinkEvent>
-      <Command>copy /Y "$(SolutionDir)third_party\vulkan\lib\vulkan-1.lib" "$(SolutionDir)$(TargetName)\vulkan-1.lib"</Command>
+      <Command>
+      </Command>
     </PreLinkEvent>
     <PostBuildEvent>
-      <Command>copy /Y "$(SolutionDir)third_party\vulkan\lib\vulkan-1.dll" "$(TargetDir)vulkan-1.dll"</Command>
+      <Command>
+      </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

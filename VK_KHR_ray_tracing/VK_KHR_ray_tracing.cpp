@@ -3,13 +3,9 @@
 #define VK_ENABLE_BETA_EXTENSIONS
 #define VK_USE_PLATFORM_WIN32_KHR
 #include <vulkan/vulkan.h>
-#pragma comment(lib, "vulkan-1.lib")
 
 #include <pathcch.h>
-#pragma comment(lib, "Pathcch.lib")
-
 #include <Shlwapi.h>
-#pragma comment(lib, "Shlwapi.lib")
 
 #include <fstream>
 #include <iostream>
@@ -128,7 +124,7 @@ std::vector<const char*> instanceExtensions = {
     VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME
 };
 std::vector<const char*> validationLayers = {
-    //"VK_LAYER_KHRONOS_validation" // disabled until validation layers support new RT extension
+    "VK_LAYER_KHRONOS_validation"
 };
 std::vector<const char*> deviceExtensions({
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -238,6 +234,7 @@ VkMemoryRequirements GetAccelerationStructureMemoryRequirements(
     VkAccelerationStructureKHR acceleration,
     VkAccelerationStructureMemoryRequirementsTypeKHR type) {
     VkMemoryRequirements2 memoryRequirements2 = {};
+    memoryRequirements2.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
 
     PFN_vkGetAccelerationStructureMemoryRequirementsKHR
         vkGetAccelerationStructureMemoryRequirementsKHR = nullptr;
@@ -376,6 +373,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     return (DefWindowProc(hWnd, uMsg, wParam, lParam));
 }
 
+bool IsValidationLayerAvailable(const char* layerName) {
+    uint32_t propertyCount = 0;
+    ASSERT_VK_RESULT(vkEnumerateInstanceLayerProperties(&propertyCount, nullptr));
+    std::vector<VkLayerProperties> properties(propertyCount);
+    ASSERT_VK_RESULT(vkEnumerateInstanceLayerProperties(&propertyCount, properties.data()));
+    // loop through all toggled layers and check if we can enable each
+    for (unsigned int ii = 0; ii < properties.size(); ++ii) {
+        if (strcmp(layerName, properties[ii].layerName) == 0) {
+            return true;
+        }
+    };
+    return false;
+}
+
 int main() {
     // clang-format off
     PFN_vkGetPhysicalDeviceSurfaceSupportKHR vkGetPhysicalDeviceSurfaceSupportKHR = nullptr;
@@ -448,6 +459,16 @@ int main() {
     SetForegroundWindow(window);
     SetFocus(window);
 
+    // check which validation layers are available
+    std::vector<const char*> availableValidationLayers = {};
+    for (unsigned int ii = 0; ii < validationLayers.size(); ++ii) {
+        if (IsValidationLayerAvailable(validationLayers[ii])) {
+            availableValidationLayers.push_back(validationLayers[ii]);
+        } else {
+            std::cout << "Ignoring layer '" << std::string(validationLayers[ii]) << "' as it is unavailable" << std::endl;
+        }
+    };
+
     VkApplicationInfo appInfo = {};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pNext = nullptr;
@@ -463,8 +484,8 @@ int main() {
     createInfo.pApplicationInfo = &appInfo;
     createInfo.enabledExtensionCount = (uint32_t)instanceExtensions.size();
     createInfo.ppEnabledExtensionNames = instanceExtensions.data();
-    createInfo.enabledLayerCount = validationLayers.size();
-    createInfo.ppEnabledLayerNames = validationLayers.data();
+    createInfo.enabledLayerCount = availableValidationLayers.size();
+    createInfo.ppEnabledLayerNames = availableValidationLayers.data();
 
     ASSERT_VK_RESULT(vkCreateInstance(&createInfo, nullptr, &instance));
 
@@ -476,8 +497,28 @@ int main() {
     }
     std::vector<VkPhysicalDevice> devices(deviceCount);
     ASSERT_VK_RESULT(vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data()));
-    // TODO: prefer discrete and extension compatible device
-    physicalDevice = devices[0];
+
+    // find RT compatible device
+    for (unsigned int ii = 0; ii < devices.size(); ++ii) {
+        // acquire RT features
+        VkPhysicalDeviceRayTracingFeaturesKHR rayTracingFeatures = {};
+        rayTracingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_FEATURES_KHR;
+        rayTracingFeatures.pNext = nullptr;
+
+        VkPhysicalDeviceFeatures2 deviceFeatures2 = {};
+        deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        deviceFeatures2.pNext = &rayTracingFeatures;
+        vkGetPhysicalDeviceFeatures2(devices[ii], &deviceFeatures2);
+
+        if (rayTracingFeatures.rayTracing == VK_TRUE) {
+            physicalDevice = devices[ii];
+            break;
+        }
+    };
+
+    if (physicalDevice == VK_NULL_HANDLE) {
+        std::cout << "'No ray tracing compatible GPU found" << std::endl;
+    }
 
     VkPhysicalDeviceProperties deviceProperties = {};
     vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
@@ -492,20 +533,24 @@ int main() {
     deviceQueueInfo.queueCount = 1;
     deviceQueueInfo.pQueuePriorities = &queuePriority;
 
-    VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures = {};
-    bufferDeviceAddressFeatures.sType =
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
-    bufferDeviceAddressFeatures.pNext = nullptr;
-    bufferDeviceAddressFeatures.bufferDeviceAddress = VK_TRUE;
+    VkPhysicalDeviceRayTracingFeaturesKHR deviceRayTracingFeatures = {};
+    deviceRayTracingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_FEATURES_KHR;
+    deviceRayTracingFeatures.pNext = nullptr;
+    deviceRayTracingFeatures.rayTracing = VK_TRUE;
+
+    VkPhysicalDeviceVulkan12Features deviceVulkan12Features = {};
+    deviceVulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    deviceVulkan12Features.pNext = &deviceRayTracingFeatures;
+    deviceVulkan12Features.bufferDeviceAddress = VK_TRUE;
 
     VkDeviceCreateInfo deviceInfo = {};
     deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    deviceInfo.pNext = &bufferDeviceAddressFeatures;
+    deviceInfo.pNext = &deviceVulkan12Features;
     deviceInfo.queueCreateInfoCount = 1;
     deviceInfo.pQueueCreateInfos = &deviceQueueInfo;
     deviceInfo.enabledExtensionCount = deviceExtensions.size();
     deviceInfo.ppEnabledExtensionNames = deviceExtensions.data();
-    deviceInfo.pEnabledFeatures = new VkPhysicalDeviceFeatures();
+    deviceInfo.pEnabledFeatures = nullptr;
 
     ASSERT_VK_RESULT(vkCreateDevice(physicalDevice, &deviceInfo, nullptr, &device));
 
@@ -559,16 +604,6 @@ int main() {
     deviceProperties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
     deviceProperties2.pNext = &rayTracingProperties;
     vkGetPhysicalDeviceProperties2(physicalDevice, &deviceProperties2);
-
-    // acquire RT features
-    VkPhysicalDeviceRayTracingFeaturesKHR rayTracingFeatures = {};
-    rayTracingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_FEATURES_KHR;
-    rayTracingFeatures.pNext = nullptr;
-
-    VkPhysicalDeviceFeatures2 deviceFeatures2 = {};
-    deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    deviceFeatures2.pNext = &rayTracingFeatures;
-    vkGetPhysicalDeviceFeatures2(physicalDevice, &deviceFeatures2);
 
     // create bottom-level container
     {
@@ -861,7 +896,7 @@ int main() {
         imageInfo.arrayLayers = 1;
         imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
         imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-        imageInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT;
+        imageInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
         imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         imageInfo.queueFamilyIndexCount = 0;
         imageInfo.pQueueFamilyIndices = nullptr;
@@ -1264,7 +1299,7 @@ int main() {
     VkCommandBufferBeginInfo commandBufferBeginInfo = {};
     commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     commandBufferBeginInfo.pNext = nullptr;
-    commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    commandBufferBeginInfo.flags = 0;
     commandBufferBeginInfo.pInheritanceInfo = nullptr;
 
     for (uint32_t ii = 0; ii < amountOfImagesInSwapchain; ++ii) {
@@ -1286,8 +1321,8 @@ int main() {
 
         // transition swapchain image into copy destination state
         InsertCommandImageBarrier(commandBuffer, swapchainImage, 0, VK_ACCESS_TRANSFER_WRITE_BIT,
-                                  VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                  subresourceRange);
+                                  VK_IMAGE_LAYOUT_UNDEFINED,
+                                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, subresourceRange);
 
         // transition offscreen buffer into copy source state
         InsertCommandImageBarrier(commandBuffer, offscreenBuffer, VK_ACCESS_SHADER_WRITE_BIT,
@@ -1297,6 +1332,11 @@ int main() {
         // copy offscreen buffer into swapchain image
         vkCmdCopyImage(commandBuffer, offscreenBuffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                        swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+
+        // transition swapchain image into presentable state
+        InsertCommandImageBarrier(commandBuffer, swapchainImage, 0, VK_ACCESS_TRANSFER_WRITE_BIT,
+                                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                  VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, subresourceRange);
 
         ASSERT_VK_RESULT(vkEndCommandBuffer(commandBuffer));
     };
@@ -1355,6 +1395,8 @@ int main() {
             presentInfo.pResults = nullptr;
 
             ASSERT_VK_RESULT(vkQueuePresentKHR(queue, &presentInfo));
+
+            ASSERT_VK_RESULT(vkQueueWaitIdle(queue));
         }
     }
 
