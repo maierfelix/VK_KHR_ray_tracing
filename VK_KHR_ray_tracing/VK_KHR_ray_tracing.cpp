@@ -253,25 +253,6 @@ VkMemoryRequirements GetAccelerationStructureMemoryRequirements(
     return memoryRequirements2.memoryRequirements;
 }
 
-AccelerationMemory CreateAccelerationMemory(VkAccelerationStructureKHR acceleration,
-                                            VkAccelerationStructureMemoryRequirementsTypeKHR type) {
-    AccelerationMemory out = {};
-
-    VkMemoryRequirements memoryRequirements =
-        GetAccelerationStructureMemoryRequirements(acceleration, type);
-
-    VkMemoryAllocateInfo memAllocInfo = {};
-    memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    memAllocInfo.pNext = nullptr;
-    memAllocInfo.allocationSize = memoryRequirements.size;
-    memAllocInfo.memoryTypeIndex =
-        FindMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    ASSERT_VK_RESULT(vkAllocateMemory(device, &memAllocInfo, nullptr, &out.memory));
-
-    return out;
-}
-
 void BindAccelerationMemory(VkAccelerationStructureKHR acceleration, VkDeviceMemory memory) {
     PFN_vkBindAccelerationStructureMemoryKHR vkBindAccelerationStructureMemoryKHR = nullptr;
     RESOLVE_VK_DEVICE_PFN(device, vkBindAccelerationStructureMemoryKHR);
@@ -633,7 +614,7 @@ int main() {
         ASSERT_VK_RESULT(
             vkCreateAccelerationStructureKHR(device, &accelerationInfo, nullptr, &bottomLevelAS));
 
-        AccelerationMemory objectMemory = CreateAccelerationMemory(
+        AccelerationMemory objectMemory = CreateAccelerationScratchBuffer(
             bottomLevelAS, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_KHR);
 
         BindAccelerationMemory(bottomLevelAS, objectMemory.memory);
@@ -781,7 +762,7 @@ int main() {
         ASSERT_VK_RESULT(
             vkCreateAccelerationStructureKHR(device, &accelerationInfo, nullptr, &topLevelAS));
 
-        AccelerationMemory objectMemory = CreateAccelerationMemory(
+        AccelerationMemory objectMemory = CreateAccelerationScratchBuffer(
             topLevelAS, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_KHR);
 
         BindAccelerationMemory(topLevelAS, objectMemory.memory);
