@@ -2,10 +2,9 @@
 
 #define VK_ENABLE_BETA_EXTENSIONS
 #define VK_USE_PLATFORM_WIN32_KHR
-#include <vulkan/vulkan.h>
-
-#include <pathcch.h>
 #include <Shlwapi.h>
+#include <pathcch.h>
+#include <vulkan/vulkan.h>
 
 #include <fstream>
 #include <iostream>
@@ -176,7 +175,7 @@ uint64_t GetBufferAddress(VkBuffer buffer) {
     PFN_vkGetBufferDeviceAddressKHR vkGetBufferDeviceAddressKHR = nullptr;
     RESOLVE_VK_DEVICE_PFN(device, vkGetBufferDeviceAddressKHR);
 
-    VkBufferDeviceAddressInfoKHR bufferAddressInfo = {};
+    VkBufferDeviceAddressInfoKHR bufferAddressInfo;
     bufferAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
     bufferAddressInfo.pNext = nullptr;
     bufferAddressInfo.buffer = buffer;
@@ -187,7 +186,7 @@ uint64_t GetBufferAddress(VkBuffer buffer) {
 MappedBuffer CreateMappedBuffer(void* srcData, uint32_t byteLength) {
     MappedBuffer out = {};
 
-    VkBufferCreateInfo bufferInfo = {};
+    VkBufferCreateInfo bufferInfo;
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.pNext = nullptr;
     bufferInfo.size = byteLength;
@@ -197,16 +196,16 @@ MappedBuffer CreateMappedBuffer(void* srcData, uint32_t byteLength) {
     bufferInfo.pQueueFamilyIndices = nullptr;
     ASSERT_VK_RESULT(vkCreateBuffer(device, &bufferInfo, nullptr, &out.buffer));
 
-    VkMemoryRequirements memoryRequirements = {};
+    VkMemoryRequirements memoryRequirements;
     vkGetBufferMemoryRequirements(device, out.buffer, &memoryRequirements);
 
-    VkMemoryAllocateFlagsInfo memAllocFlagsInfo = {};
+    VkMemoryAllocateFlagsInfo memAllocFlagsInfo;
     memAllocFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
     memAllocFlagsInfo.pNext = nullptr;
     memAllocFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
     memAllocFlagsInfo.deviceMask = 0;
 
-    VkMemoryAllocateInfo memAllocInfo = {};
+    VkMemoryAllocateInfo memAllocInfo;
     memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     memAllocInfo.pNext = &memAllocFlagsInfo;
     memAllocInfo.allocationSize = memoryRequirements.size;
@@ -233,14 +232,15 @@ MappedBuffer CreateMappedBuffer(void* srcData, uint32_t byteLength) {
 VkMemoryRequirements GetAccelerationStructureMemoryRequirements(
     VkAccelerationStructureKHR acceleration,
     VkAccelerationStructureMemoryRequirementsTypeKHR type) {
-    VkMemoryRequirements2 memoryRequirements2 = {};
+    VkMemoryRequirements2 memoryRequirements2;
     memoryRequirements2.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
+    memoryRequirements2.pNext = nullptr;
 
     PFN_vkGetAccelerationStructureMemoryRequirementsKHR
         vkGetAccelerationStructureMemoryRequirementsKHR = nullptr;
     RESOLVE_VK_DEVICE_PFN(device, vkGetAccelerationStructureMemoryRequirementsKHR);
 
-    VkAccelerationStructureMemoryRequirementsInfoKHR accelerationMemoryRequirements = {};
+    VkAccelerationStructureMemoryRequirementsInfoKHR accelerationMemoryRequirements;
     accelerationMemoryRequirements.sType =
         VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_INFO_KHR;
     accelerationMemoryRequirements.pNext = nullptr;
@@ -257,7 +257,7 @@ void BindAccelerationMemory(VkAccelerationStructureKHR acceleration, VkDeviceMem
     PFN_vkBindAccelerationStructureMemoryKHR vkBindAccelerationStructureMemoryKHR = nullptr;
     RESOLVE_VK_DEVICE_PFN(device, vkBindAccelerationStructureMemoryKHR);
 
-    VkBindAccelerationStructureMemoryInfoKHR accelerationMemoryBindInfo = {};
+    VkBindAccelerationStructureMemoryInfoKHR accelerationMemoryBindInfo;
     accelerationMemoryBindInfo.sType =
         VK_STRUCTURE_TYPE_BIND_ACCELERATION_STRUCTURE_MEMORY_INFO_KHR;
     accelerationMemoryBindInfo.pNext = nullptr;
@@ -278,9 +278,10 @@ AccelerationMemory CreateAccelerationScratchBuffer(
     VkMemoryRequirements asRequirements =
         GetAccelerationStructureMemoryRequirements(acceleration, type);
 
-    VkBufferCreateInfo bufferInfo = {};
+    VkBufferCreateInfo bufferInfo;
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.pNext = nullptr;
+    bufferInfo.flags = 0;
     bufferInfo.size = asRequirements.size;
     bufferInfo.usage =
         VK_BUFFER_USAGE_RAY_TRACING_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
@@ -289,7 +290,7 @@ AccelerationMemory CreateAccelerationScratchBuffer(
     bufferInfo.pQueueFamilyIndices = nullptr;
     ASSERT_VK_RESULT(vkCreateBuffer(device, &bufferInfo, nullptr, &out.buffer));
 
-    VkMemoryRequirements bufRequirements = {};
+    VkMemoryRequirements bufRequirements;
     vkGetBufferMemoryRequirements(device, out.buffer, &bufRequirements);
 
     // buffer requirements can differ to AS requirements, so we max them
@@ -298,7 +299,7 @@ AccelerationMemory CreateAccelerationScratchBuffer(
     // combine AS and buf mem types
     uint32_t allocationMemoryBits = bufRequirements.memoryTypeBits | asRequirements.memoryTypeBits;
 
-    VkMemoryAllocateFlagsInfo memAllocFlagsInfo = {};
+    VkMemoryAllocateFlagsInfo memAllocFlagsInfo;
     memAllocFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
     memAllocFlagsInfo.pNext = nullptr;
     memAllocFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
@@ -326,7 +327,7 @@ void InsertCommandImageBarrier(VkCommandBuffer commandBuffer,
                                VkImageLayout oldLayout,
                                VkImageLayout newLayout,
                                const VkImageSubresourceRange& subresourceRange) {
-    VkImageMemoryBarrier imageMemoryBarrier = {};
+    VkImageMemoryBarrier imageMemoryBarrier;
     imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     imageMemoryBarrier.pNext = nullptr;
     imageMemoryBarrier.srcAccessMask = srcAccessMask;
@@ -441,16 +442,17 @@ int main() {
     SetFocus(window);
 
     // check which validation layers are available
-    std::vector<const char*> availableValidationLayers = {};
+    std::vector<const char*> availableValidationLayers;
     for (unsigned int ii = 0; ii < validationLayers.size(); ++ii) {
         if (IsValidationLayerAvailable(validationLayers[ii])) {
             availableValidationLayers.push_back(validationLayers[ii]);
         } else {
-            std::cout << "Ignoring layer '" << std::string(validationLayers[ii]) << "' as it is unavailable" << std::endl;
+            std::cout << "Ignoring layer '" << std::string(validationLayers[ii])
+                      << "' as it is unavailable" << std::endl;
         }
     };
 
-    VkApplicationInfo appInfo = {};
+    VkApplicationInfo appInfo;
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pNext = nullptr;
     appInfo.pApplicationName = "Hello Triangle";
@@ -459,7 +461,7 @@ int main() {
     appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
     appInfo.apiVersion = VK_API_VERSION_1_2;
 
-    VkInstanceCreateInfo createInfo = {};
+    VkInstanceCreateInfo createInfo;
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     createInfo.pNext = nullptr;
     createInfo.pApplicationInfo = &appInfo;
@@ -486,7 +488,7 @@ int main() {
         rayTracingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_FEATURES_KHR;
         rayTracingFeatures.pNext = nullptr;
 
-        VkPhysicalDeviceFeatures2 deviceFeatures2 = {};
+        VkPhysicalDeviceFeatures2 deviceFeatures2;
         deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
         deviceFeatures2.pNext = &rayTracingFeatures;
         vkGetPhysicalDeviceFeatures2(devices[ii], &deviceFeatures2);
@@ -501,15 +503,16 @@ int main() {
         std::cout << "'No ray tracing compatible GPU found" << std::endl;
     }
 
-    VkPhysicalDeviceProperties deviceProperties = {};
+    VkPhysicalDeviceProperties deviceProperties;
     vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
     std::cout << "GPU: " << deviceProperties.deviceName << std::endl;
 
     const float queuePriority = 0.0f;
 
-    VkDeviceQueueCreateInfo deviceQueueInfo = {};
+    VkDeviceQueueCreateInfo deviceQueueInfo;
     deviceQueueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
     deviceQueueInfo.pNext = nullptr;
+    deviceQueueInfo.flags = 0;
     deviceQueueInfo.queueFamilyIndex = 0;
     deviceQueueInfo.queueCount = 1;
     deviceQueueInfo.pQueuePriorities = &queuePriority;
@@ -524,14 +527,17 @@ int main() {
     deviceVulkan12Features.pNext = &deviceRayTracingFeatures;
     deviceVulkan12Features.bufferDeviceAddress = VK_TRUE;
 
-    VkDeviceCreateInfo deviceInfo = {};
+    VkDeviceCreateInfo deviceInfo;
     deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     deviceInfo.pNext = &deviceVulkan12Features;
+    deviceInfo.flags = 0;
     deviceInfo.queueCreateInfoCount = 1;
     deviceInfo.pQueueCreateInfos = &deviceQueueInfo;
     deviceInfo.enabledExtensionCount = deviceExtensions.size();
     deviceInfo.ppEnabledExtensionNames = deviceExtensions.data();
     deviceInfo.pEnabledFeatures = nullptr;
+    deviceInfo.enabledLayerCount = 0;
+    deviceInfo.ppEnabledLayerNames = nullptr;
 
     ASSERT_VK_RESULT(vkCreateDevice(physicalDevice, &deviceInfo, nullptr, &device));
 
@@ -568,7 +574,7 @@ int main() {
         return EXIT_FAILURE;
     }
 
-    VkCommandPoolCreateInfo cmdPoolInfo = {};
+    VkCommandPoolCreateInfo cmdPoolInfo;
     cmdPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     cmdPoolInfo.pNext = nullptr;
     cmdPoolInfo.flags = 0;
@@ -577,31 +583,42 @@ int main() {
     ASSERT_VK_RESULT(vkCreateCommandPool(device, &cmdPoolInfo, nullptr, &commandPool));
 
     // acquire RT properties
-    VkPhysicalDeviceRayTracingPropertiesKHR rayTracingProperties = {};
+    VkPhysicalDeviceRayTracingPropertiesKHR rayTracingProperties;
     rayTracingProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PROPERTIES_KHR;
     rayTracingProperties.pNext = nullptr;
 
-    VkPhysicalDeviceProperties2 deviceProperties2 = {};
+    VkPhysicalDeviceProperties2 deviceProperties2;
     deviceProperties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
     deviceProperties2.pNext = &rayTracingProperties;
     vkGetPhysicalDeviceProperties2(physicalDevice, &deviceProperties2);
+
+    // clang-format off
+    std::vector<float> vertices = {
+        +1.0f, +1.0f, +0.0f,
+        -1.0f, +1.0f, +0.0f,
+        +0.0f, -1.0f, +0.0f
+    };
+    std::vector<uint32_t> indices = {
+        0, 1, 2
+    };
+    // clang-format on
 
     // create bottom-level container
     {
         std::cout << "Creating Bottom-Level Acceleration Structure.." << std::endl;
 
-        VkAccelerationStructureCreateGeometryTypeInfoKHR accelerationCreateGeometryInfo = {};
+        VkAccelerationStructureCreateGeometryTypeInfoKHR accelerationCreateGeometryInfo;
         accelerationCreateGeometryInfo.sType =
             VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_GEOMETRY_TYPE_INFO_KHR;
         accelerationCreateGeometryInfo.pNext = nullptr;
         accelerationCreateGeometryInfo.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
-        accelerationCreateGeometryInfo.maxPrimitiveCount = 128;
+        accelerationCreateGeometryInfo.maxPrimitiveCount = indices.size() / 3;
         accelerationCreateGeometryInfo.indexType = VK_INDEX_TYPE_UINT32;
-        accelerationCreateGeometryInfo.maxVertexCount = 8;
+        accelerationCreateGeometryInfo.maxVertexCount = vertices.size();
         accelerationCreateGeometryInfo.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
         accelerationCreateGeometryInfo.allowsTransforms = VK_FALSE;
 
-        VkAccelerationStructureCreateInfoKHR accelerationInfo = {};
+        VkAccelerationStructureCreateInfoKHR accelerationInfo;
         accelerationInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
         accelerationInfo.pNext = nullptr;
         accelerationInfo.compactedSize = 0;
@@ -623,21 +640,11 @@ int main() {
             bottomLevelAS, VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_KHR);
 
         // Get bottom level acceleration structure handle for use in top level instances
-        VkAccelerationStructureDeviceAddressInfoKHR devAddrInfo{};
+        VkAccelerationStructureDeviceAddressInfoKHR devAddrInfo;
         devAddrInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
+        devAddrInfo.pNext = nullptr;
         devAddrInfo.accelerationStructure = bottomLevelAS;
         bottomLevelASHandle = vkGetAccelerationStructureDeviceAddressKHR(device, &devAddrInfo);
-
-        // clang-format off
-        std::vector<float> vertices = {
-            +1.0f, +1.0f, +0.0f,
-            -1.0f, +1.0f, +0.0f,
-            +0.0f, -1.0f, +0.0f
-        };
-        std::vector<uint32_t> indices = {
-            0, 1, 2
-        };
-        // clang-format on
 
         MappedBuffer vertexBuffer =
             CreateMappedBuffer(vertices.data(), sizeof(float) * vertices.size());
@@ -645,13 +652,12 @@ int main() {
         MappedBuffer indexBuffer =
             CreateMappedBuffer(indices.data(), sizeof(uint32_t) * indices.size());
 
-        VkAccelerationStructureGeometryKHR accelerationGeometry = {};
+        VkAccelerationStructureGeometryKHR accelerationGeometry;
         accelerationGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
         accelerationGeometry.pNext = nullptr;
         accelerationGeometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
         accelerationGeometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
         accelerationGeometry.geometry = {};
-        accelerationGeometry.geometry.triangles = {};
         accelerationGeometry.geometry.triangles.sType =
             VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
         accelerationGeometry.geometry.triangles.pNext = nullptr;
@@ -667,7 +673,7 @@ int main() {
             {accelerationGeometry});
         const VkAccelerationStructureGeometryKHR* ppGeometries = accelerationGeometries.data();
 
-        VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo = {};
+        VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo;
         accelerationBuildGeometryInfo.sType =
             VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
         accelerationBuildGeometryInfo.pNext = nullptr;
@@ -682,7 +688,7 @@ int main() {
         accelerationBuildGeometryInfo.ppGeometries = &ppGeometries;
         accelerationBuildGeometryInfo.scratchData.deviceAddress = buildScratchMemory.memoryAddress;
 
-        VkAccelerationStructureBuildOffsetInfoKHR accelerationBuildOffsetInfo = {};
+        VkAccelerationStructureBuildOffsetInfoKHR accelerationBuildOffsetInfo;
         accelerationBuildOffsetInfo.primitiveCount = 1;
         accelerationBuildOffsetInfo.primitiveOffset = 0x0;
         accelerationBuildOffsetInfo.firstVertex = 0;
@@ -693,7 +699,7 @@ int main() {
 
         VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
 
-        VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
+        VkCommandBufferAllocateInfo commandBufferAllocateInfo;
         commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         commandBufferAllocateInfo.pNext = nullptr;
         commandBufferAllocateInfo.commandPool = commandPool;
@@ -702,10 +708,11 @@ int main() {
         ASSERT_VK_RESULT(
             vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, &commandBuffer));
 
-        VkCommandBufferBeginInfo commandBufferBeginInfo = {};
+        VkCommandBufferBeginInfo commandBufferBeginInfo;
         commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         commandBufferBeginInfo.pNext = nullptr;
         commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        commandBufferBeginInfo.pInheritanceInfo = nullptr;
         vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
 
         vkCmdBuildAccelerationStructureKHR(commandBuffer, 1, &accelerationBuildGeometryInfo,
@@ -713,16 +720,22 @@ int main() {
 
         ASSERT_VK_RESULT(vkEndCommandBuffer(commandBuffer));
 
-        VkSubmitInfo submitInfo = {};
+        VkSubmitInfo submitInfo;
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.pNext = nullptr;
+        submitInfo.waitSemaphoreCount = 0;
+        submitInfo.pWaitSemaphores = nullptr;
+        submitInfo.pWaitDstStageMask = 0;
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &commandBuffer;
+        submitInfo.signalSemaphoreCount = 0;
+        submitInfo.pSignalSemaphores = nullptr;
 
         VkFence fence = VK_NULL_HANDLE;
-        VkFenceCreateInfo fenceInfo = {};
+        VkFenceCreateInfo fenceInfo;
         fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         fenceInfo.pNext = nullptr;
+        fenceInfo.flags = 0;
 
         ASSERT_VK_RESULT(vkCreateFence(device, &fenceInfo, nullptr, &fence));
         ASSERT_VK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, fence));
@@ -742,19 +755,23 @@ int main() {
     {
         std::cout << "Creating Top-Level Acceleration Structure.." << std::endl;
 
-        VkAccelerationStructureCreateGeometryTypeInfoKHR accelerationCreateGeometryInfo = {};
+        VkAccelerationStructureCreateGeometryTypeInfoKHR accelerationCreateGeometryInfo;
         accelerationCreateGeometryInfo.sType =
             VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_GEOMETRY_TYPE_INFO_KHR;
         accelerationCreateGeometryInfo.pNext = nullptr;
         accelerationCreateGeometryInfo.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
         accelerationCreateGeometryInfo.maxPrimitiveCount = 1;
+        accelerationCreateGeometryInfo.indexType = VK_INDEX_TYPE_NONE_KHR;
+        accelerationCreateGeometryInfo.maxVertexCount = 0;
+        accelerationCreateGeometryInfo.vertexFormat = VK_FORMAT_UNDEFINED;
+        accelerationCreateGeometryInfo.allowsTransforms = VK_FALSE;
 
-        VkAccelerationStructureCreateInfoKHR accelerationInfo = {};
+        VkAccelerationStructureCreateInfoKHR accelerationInfo;
         accelerationInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
         accelerationInfo.pNext = nullptr;
+        accelerationInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
         accelerationInfo.compactedSize = 0;
         accelerationInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
-        accelerationInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
         accelerationInfo.maxGeometryCount = 1;
         accelerationInfo.pGeometryInfos = &accelerationCreateGeometryInfo;
         accelerationInfo.deviceAddress = VK_NULL_HANDLE;
@@ -781,13 +798,12 @@ int main() {
         MappedBuffer instanceBuffer = CreateMappedBuffer(
             instances.data(), sizeof(VkAccelerationStructureInstanceKHR) * instances.size());
 
-        VkAccelerationStructureGeometryKHR accelerationGeometry = {};
+        VkAccelerationStructureGeometryKHR accelerationGeometry;
         accelerationGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
         accelerationGeometry.pNext = nullptr;
         accelerationGeometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
         accelerationGeometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
         accelerationGeometry.geometry = {};
-        accelerationGeometry.geometry.instances = {};
         accelerationGeometry.geometry.instances.sType =
             VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
         accelerationGeometry.geometry.instances.pNext = nullptr;
@@ -798,7 +814,7 @@ int main() {
             {accelerationGeometry});
         const VkAccelerationStructureGeometryKHR* ppGeometries = accelerationGeometries.data();
 
-        VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo = {};
+        VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo;
         accelerationBuildGeometryInfo.sType =
             VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
         accelerationBuildGeometryInfo.pNext = nullptr;
@@ -813,7 +829,7 @@ int main() {
         accelerationBuildGeometryInfo.ppGeometries = &ppGeometries;
         accelerationBuildGeometryInfo.scratchData.deviceAddress = buildScratchMemory.memoryAddress;
 
-        VkAccelerationStructureBuildOffsetInfoKHR accelerationBuildOffsetInfo = {};
+        VkAccelerationStructureBuildOffsetInfoKHR accelerationBuildOffsetInfo;
         accelerationBuildOffsetInfo.primitiveCount = 1;
         accelerationBuildOffsetInfo.primitiveOffset = 0x0;
         accelerationBuildOffsetInfo.firstVertex = 0;
@@ -824,7 +840,7 @@ int main() {
 
         VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
 
-        VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
+        VkCommandBufferAllocateInfo commandBufferAllocateInfo;
         commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         commandBufferAllocateInfo.pNext = nullptr;
         commandBufferAllocateInfo.commandPool = commandPool;
@@ -833,10 +849,11 @@ int main() {
         ASSERT_VK_RESULT(
             vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, &commandBuffer));
 
-        VkCommandBufferBeginInfo commandBufferBeginInfo = {};
+        VkCommandBufferBeginInfo commandBufferBeginInfo;
         commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         commandBufferBeginInfo.pNext = nullptr;
         commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        commandBufferBeginInfo.pInheritanceInfo = nullptr;
         vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
 
         vkCmdBuildAccelerationStructureKHR(commandBuffer, 1, &accelerationBuildGeometryInfo,
@@ -844,16 +861,22 @@ int main() {
 
         ASSERT_VK_RESULT(vkEndCommandBuffer(commandBuffer));
 
-        VkSubmitInfo submitInfo = {};
+        VkSubmitInfo submitInfo;
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.pNext = nullptr;
+        submitInfo.waitSemaphoreCount = 0;
+        submitInfo.pWaitSemaphores = nullptr;
+        submitInfo.pWaitDstStageMask = 0;
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &commandBuffer;
+        submitInfo.signalSemaphoreCount = 0;
+        submitInfo.pSignalSemaphores = nullptr;
 
         VkFence fence = VK_NULL_HANDLE;
-        VkFenceCreateInfo fenceInfo = {};
+        VkFenceCreateInfo fenceInfo;
         fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         fenceInfo.pNext = nullptr;
+        fenceInfo.flags = 0;
 
         ASSERT_VK_RESULT(vkCreateFence(device, &fenceInfo, nullptr, &fence));
         ASSERT_VK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, fence));
@@ -867,9 +890,10 @@ int main() {
     {
         std::cout << "Creating Offsceen Buffer.." << std::endl;
 
-        VkImageCreateInfo imageInfo = {};
+        VkImageCreateInfo imageInfo;
         imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         imageInfo.pNext = nullptr;
+        imageInfo.flags = 0;
         imageInfo.imageType = VK_IMAGE_TYPE_2D;
         imageInfo.format = desiredSurfaceFormat;
         imageInfo.extent = {desiredWindowWidth, desiredWindowHeight, 1};
@@ -885,10 +909,10 @@ int main() {
 
         ASSERT_VK_RESULT(vkCreateImage(device, &imageInfo, nullptr, &offscreenBuffer));
 
-        VkMemoryRequirements memoryRequirements = {};
+        VkMemoryRequirements memoryRequirements;
         vkGetImageMemoryRequirements(device, offscreenBuffer, &memoryRequirements);
 
-        VkMemoryAllocateInfo memoryAllocateInfo = {};
+        VkMemoryAllocateInfo memoryAllocateInfo;
         memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         memoryAllocateInfo.pNext = nullptr;
         memoryAllocateInfo.allocationSize = memoryRequirements.size;
@@ -900,9 +924,10 @@ int main() {
 
         ASSERT_VK_RESULT(vkBindImageMemory(device, offscreenBuffer, offscreenBufferMemory, 0));
 
-        VkImageViewCreateInfo imageViewInfo = {};
+        VkImageViewCreateInfo imageViewInfo;
         imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         imageViewInfo.pNext = nullptr;
+        imageViewInfo.flags = 0;
         imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
         imageViewInfo.format = desiredSurfaceFormat;
         imageViewInfo.subresourceRange = {};
@@ -912,7 +937,6 @@ int main() {
         imageViewInfo.subresourceRange.baseArrayLayer = 0;
         imageViewInfo.subresourceRange.layerCount = 1;
         imageViewInfo.image = offscreenBuffer;
-        imageViewInfo.flags = 0;
         imageViewInfo.components.r = VK_COMPONENT_SWIZZLE_R;
         imageViewInfo.components.g = VK_COMPONENT_SWIZZLE_G;
         imageViewInfo.components.b = VK_COMPONENT_SWIZZLE_B;
@@ -925,7 +949,7 @@ int main() {
     {
         std::cout << "Creating RT Descriptor Set Layout.." << std::endl;
 
-        VkDescriptorSetLayoutBinding accelerationStructureLayoutBinding = {};
+        VkDescriptorSetLayoutBinding accelerationStructureLayoutBinding;
         accelerationStructureLayoutBinding.binding = 0;
         accelerationStructureLayoutBinding.descriptorType =
             VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
@@ -933,16 +957,17 @@ int main() {
         accelerationStructureLayoutBinding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
         accelerationStructureLayoutBinding.pImmutableSamplers = nullptr;
 
-        VkDescriptorSetLayoutBinding storageImageLayoutBinding = {};
+        VkDescriptorSetLayoutBinding storageImageLayoutBinding;
         storageImageLayoutBinding.binding = 1;
         storageImageLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         storageImageLayoutBinding.descriptorCount = 1;
         storageImageLayoutBinding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+        storageImageLayoutBinding.pImmutableSamplers = nullptr;
 
         std::vector<VkDescriptorSetLayoutBinding> bindings(
             {accelerationStructureLayoutBinding, storageImageLayoutBinding});
 
-        VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+        VkDescriptorSetLayoutCreateInfo layoutInfo;
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         layoutInfo.pNext = nullptr;
         layoutInfo.flags = 0;
@@ -961,7 +986,7 @@ int main() {
             {{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1},
              {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}});
 
-        VkDescriptorPoolCreateInfo descriptorPoolInfo = {};
+        VkDescriptorPoolCreateInfo descriptorPoolInfo;
         descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         descriptorPoolInfo.pNext = nullptr;
         descriptorPoolInfo.flags = 0;
@@ -972,7 +997,7 @@ int main() {
         ASSERT_VK_RESULT(
             vkCreateDescriptorPool(device, &descriptorPoolInfo, nullptr, &descriptorPool));
 
-        VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {};
+        VkDescriptorSetAllocateInfo descriptorSetAllocateInfo;
         descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         descriptorSetAllocateInfo.pNext = nullptr;
         descriptorSetAllocateInfo.descriptorPool = descriptorPool;
@@ -989,27 +1014,34 @@ int main() {
         descriptorAccelerationStructureInfo.accelerationStructureCount = 1;
         descriptorAccelerationStructureInfo.pAccelerationStructures = &topLevelAS;
 
-        VkWriteDescriptorSet accelerationStructureWrite = {};
+        VkWriteDescriptorSet accelerationStructureWrite;
         accelerationStructureWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         accelerationStructureWrite.pNext = &descriptorAccelerationStructureInfo;
         accelerationStructureWrite.dstSet = descriptorSet;
         accelerationStructureWrite.dstBinding = 0;
         accelerationStructureWrite.descriptorCount = 1;
         accelerationStructureWrite.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+        accelerationStructureWrite.dstArrayElement = 0;
+        accelerationStructureWrite.pImageInfo = nullptr;
+        accelerationStructureWrite.pBufferInfo = nullptr;
+        accelerationStructureWrite.pTexelBufferView = nullptr;
 
-        VkDescriptorImageInfo storageImageInfo = {};
+        VkDescriptorImageInfo storageImageInfo;
         storageImageInfo.sampler = VK_NULL_HANDLE;
         storageImageInfo.imageView = offscreenBufferView;
         storageImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
-        VkWriteDescriptorSet outputImageWrite = {};
+        VkWriteDescriptorSet outputImageWrite;
         outputImageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         outputImageWrite.pNext = nullptr;
         outputImageWrite.dstSet = descriptorSet;
         outputImageWrite.dstBinding = 1;
         outputImageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         outputImageWrite.descriptorCount = 1;
+        outputImageWrite.dstArrayElement = 0;
         outputImageWrite.pImageInfo = &storageImageInfo;
+        outputImageWrite.pBufferInfo = nullptr;
+        outputImageWrite.pTexelBufferView = nullptr;
 
         std::vector<VkWriteDescriptorSet> descriptorWrites(
             {accelerationStructureWrite, outputImageWrite});
@@ -1022,7 +1054,7 @@ int main() {
     {
         std::cout << "Creating RT Pipeline Layout.." << std::endl;
 
-        VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo;
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipelineLayoutInfo.pNext = nullptr;
         pipelineLayoutInfo.flags = 0;
@@ -1045,31 +1077,37 @@ int main() {
         std::vector<char> rchitShaderSrc = readFile(basePath + "/ray-closest-hit.spv");
         std::vector<char> rmissShaderSrc = readFile(basePath + "/ray-miss.spv");
 
-        VkPipelineShaderStageCreateInfo rayGenShaderStageInfo = {};
+        VkPipelineShaderStageCreateInfo rayGenShaderStageInfo;
         rayGenShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         rayGenShaderStageInfo.pNext = nullptr;
+        rayGenShaderStageInfo.flags = 0;
         rayGenShaderStageInfo.stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
         rayGenShaderStageInfo.module = CreateShaderModule(rgenShaderSrc);
         rayGenShaderStageInfo.pName = "main";
+        rayGenShaderStageInfo.pSpecializationInfo = nullptr;
 
         VkPipelineShaderStageCreateInfo rayChitShaderStageInfo = {};
         rayChitShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         rayChitShaderStageInfo.pNext = nullptr;
+        rayChitShaderStageInfo.flags = 0;
         rayChitShaderStageInfo.stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
         rayChitShaderStageInfo.module = CreateShaderModule(rchitShaderSrc);
         rayChitShaderStageInfo.pName = "main";
+        rayChitShaderStageInfo.pSpecializationInfo = nullptr;
 
         VkPipelineShaderStageCreateInfo rayMissShaderStageInfo = {};
         rayMissShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         rayMissShaderStageInfo.pNext = nullptr;
+        rayMissShaderStageInfo.flags = 0;
         rayMissShaderStageInfo.stage = VK_SHADER_STAGE_MISS_BIT_KHR;
         rayMissShaderStageInfo.module = CreateShaderModule(rmissShaderSrc);
         rayMissShaderStageInfo.pName = "main";
+        rayMissShaderStageInfo.pSpecializationInfo = nullptr;
 
         std::vector<VkPipelineShaderStageCreateInfo> shaderStages = {
             rayGenShaderStageInfo, rayChitShaderStageInfo, rayMissShaderStageInfo};
 
-        VkRayTracingShaderGroupCreateInfoKHR rayGenGroup = {};
+        VkRayTracingShaderGroupCreateInfoKHR rayGenGroup;
         rayGenGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
         rayGenGroup.pNext = nullptr;
         rayGenGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
@@ -1077,8 +1115,9 @@ int main() {
         rayGenGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
         rayGenGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
         rayGenGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
+        rayGenGroup.pShaderGroupCaptureReplayHandle = nullptr;
 
-        VkRayTracingShaderGroupCreateInfoKHR rayHitGroup = {};
+        VkRayTracingShaderGroupCreateInfoKHR rayHitGroup;
         rayHitGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
         rayHitGroup.pNext = nullptr;
         rayHitGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
@@ -1086,8 +1125,9 @@ int main() {
         rayHitGroup.closestHitShader = 1;
         rayHitGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
         rayHitGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
+        rayHitGroup.pShaderGroupCaptureReplayHandle = nullptr;
 
-        VkRayTracingShaderGroupCreateInfoKHR rayMissGroup = {};
+        VkRayTracingShaderGroupCreateInfoKHR rayMissGroup;
         rayMissGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
         rayMissGroup.pNext = nullptr;
         rayMissGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
@@ -1095,11 +1135,12 @@ int main() {
         rayMissGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
         rayMissGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
         rayMissGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
+        rayMissGroup.pShaderGroupCaptureReplayHandle = nullptr;
 
         std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups = {rayGenGroup, rayHitGroup,
                                                                           rayMissGroup};
 
-        VkRayTracingPipelineCreateInfoKHR pipelineInfo = {};
+        VkRayTracingPipelineCreateInfoKHR pipelineInfo;
         pipelineInfo.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
         pipelineInfo.pNext = nullptr;
         pipelineInfo.flags = 0;
@@ -1130,9 +1171,10 @@ int main() {
         shaderBindingTableSize =
             shaderBindingTableGroupCount * rayTracingProperties.shaderGroupHandleSize;
 
-        VkBufferCreateInfo bufferInfo = {};
+        VkBufferCreateInfo bufferInfo;
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.pNext = nullptr;
+        bufferInfo.flags = 0;
         bufferInfo.size = shaderBindingTableSize;
         bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -1143,7 +1185,7 @@ int main() {
         VkMemoryRequirements memoryRequirements = {};
         vkGetBufferMemoryRequirements(device, shaderBindingTable.buffer, &memoryRequirements);
 
-        VkMemoryAllocateInfo memAllocInfo = {};
+        VkMemoryAllocateInfo memAllocInfo;
         memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         memAllocInfo.pNext = nullptr;
         memAllocInfo.allocationSize = memoryRequirements.size;
@@ -1178,9 +1220,10 @@ int main() {
     bool isMailboxModeSupported = std::find(presentModes.begin(), presentModes.end(),
                                             VK_PRESENT_MODE_MAILBOX_KHR) != presentModes.end();
 
-    VkSwapchainCreateInfoKHR swapchainInfo = {};
+    VkSwapchainCreateInfoKHR swapchainInfo;
     swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     swapchainInfo.pNext = nullptr;
+    swapchainInfo.flags = 0;
     swapchainInfo.surface = surface;
     swapchainInfo.minImageCount = 3;
     swapchainInfo.imageFormat = desiredSurfaceFormat;
@@ -1191,13 +1234,14 @@ int main() {
     swapchainInfo.imageUsage =
         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     swapchainInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    swapchainInfo.queueFamilyIndexCount = 0;
     swapchainInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     swapchainInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     swapchainInfo.presentMode =
         isMailboxModeSupported ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR;
     swapchainInfo.clipped = VK_TRUE;
     swapchainInfo.oldSwapchain = nullptr;
+    swapchainInfo.queueFamilyIndexCount = 0;
+    swapchainInfo.pQueueFamilyIndices = nullptr;
 
     ASSERT_VK_RESULT(vkCreateSwapchainKHR(device, &swapchainInfo, nullptr, &swapchain));
 
@@ -1211,12 +1255,14 @@ int main() {
     std::vector<VkImageView> imageViews(amountOfImagesInSwapchain);
 
     for (uint32_t ii = 0; ii < amountOfImagesInSwapchain; ++ii) {
-        VkImageViewCreateInfo imageViewInfo = {};
+        VkImageViewCreateInfo imageViewInfo;
         imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         imageViewInfo.pNext = nullptr;
+        imageViewInfo.flags = 0;
         imageViewInfo.image = swapchainImages[ii];
         imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
         imageViewInfo.format = desiredSurfaceFormat;
+        imageViewInfo.components = {};
         imageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         imageViewInfo.subresourceRange.baseMipLevel = 0;
         imageViewInfo.subresourceRange.levelCount = 1;
@@ -1229,7 +1275,7 @@ int main() {
     std::cout << "Recording frame commands.." << std::endl;
 
     VkImageCopy copyRegion = {};
-    copyRegion.srcSubresource = {};
+    copyRegion.srcOffset = {0, 0, 0};
     copyRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     copyRegion.srcSubresource.mipLevel = 0;
     copyRegion.srcSubresource.baseArrayLayer = 0;
@@ -1238,12 +1284,12 @@ int main() {
     copyRegion.dstSubresource.mipLevel = 0;
     copyRegion.dstSubresource.baseArrayLayer = 0;
     copyRegion.dstSubresource.layerCount = 1;
-    copyRegion.extent = {};
     copyRegion.extent.depth = 1;
     copyRegion.extent.width = desiredWindowWidth;
     copyRegion.extent.height = desiredWindowHeight;
+    copyRegion.dstOffset = {0, 0, 0};
 
-    VkImageSubresourceRange subresourceRange = {};
+    VkImageSubresourceRange subresourceRange;
     subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     subresourceRange.baseMipLevel = 0;
     subresourceRange.levelCount = 1;
@@ -1265,7 +1311,7 @@ int main() {
     };
     // clang-format on
 
-    VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
+    VkCommandBufferAllocateInfo commandBufferAllocateInfo;
     commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     commandBufferAllocateInfo.pNext = nullptr;
     commandBufferAllocateInfo.commandPool = commandPool;
@@ -1277,7 +1323,7 @@ int main() {
     ASSERT_VK_RESULT(
         vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, commandBuffers.data()));
 
-    VkCommandBufferBeginInfo commandBufferBeginInfo = {};
+    VkCommandBufferBeginInfo commandBufferBeginInfo;
     commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     commandBufferBeginInfo.pNext = nullptr;
     commandBufferBeginInfo.flags = 0;
@@ -1302,8 +1348,8 @@ int main() {
 
         // transition swapchain image into copy destination state
         InsertCommandImageBarrier(commandBuffer, swapchainImage, 0, VK_ACCESS_TRANSFER_WRITE_BIT,
-                                  VK_IMAGE_LAYOUT_UNDEFINED,
-                                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, subresourceRange);
+                                  VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                  subresourceRange);
 
         // transition offscreen buffer into copy source state
         InsertCommandImageBarrier(commandBuffer, offscreenBuffer, VK_ACCESS_SHADER_WRITE_BIT,
@@ -1322,9 +1368,10 @@ int main() {
         ASSERT_VK_RESULT(vkEndCommandBuffer(commandBuffer));
     };
 
-    VkSemaphoreCreateInfo semaphoreInfo = {};
+    VkSemaphoreCreateInfo semaphoreInfo;
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     semaphoreInfo.pNext = nullptr;
+    semaphoreInfo.flags = 0;
 
     ASSERT_VK_RESULT(vkCreateSemaphore(device, &semaphoreInfo, nullptr, &semaphoreImageAvailable));
 
@@ -1352,7 +1399,7 @@ int main() {
 
             VkPipelineStageFlags waitStageMasks[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 
-            VkSubmitInfo submitInfo = {};
+            VkSubmitInfo submitInfo;
             submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
             submitInfo.pNext = nullptr;
             submitInfo.waitSemaphoreCount = 1;
@@ -1365,7 +1412,7 @@ int main() {
 
             ASSERT_VK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, nullptr));
 
-            VkPresentInfoKHR presentInfo = {};
+            VkPresentInfoKHR presentInfo;
             presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
             presentInfo.pNext = nullptr;
             presentInfo.waitSemaphoreCount = 1;
