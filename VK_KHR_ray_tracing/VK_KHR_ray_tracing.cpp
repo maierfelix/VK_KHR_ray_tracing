@@ -1298,13 +1298,13 @@ int main() {
 
     // clang-format off
     VkStridedBufferRegionKHR rayGenSBT = {
-        shaderBindingTable.buffer, 0, 0, shaderBindingTableSize
+        shaderBindingTable.buffer, 0, rayTracingProperties.shaderGroupHandleSize, shaderBindingTableSize
     };
     VkStridedBufferRegionKHR rayMissSBT = {
-        shaderBindingTable.buffer, 2 * rayTracingProperties.shaderGroupHandleSize, 0, shaderBindingTableSize
+        shaderBindingTable.buffer, 2 * rayTracingProperties.shaderGroupHandleSize, rayTracingProperties.shaderGroupHandleSize, shaderBindingTableSize
     };
     VkStridedBufferRegionKHR rayHitSBT = {
-        shaderBindingTable.buffer, 1 * rayTracingProperties.shaderGroupHandleSize, 0, shaderBindingTableSize
+        shaderBindingTable.buffer, 1 * rayTracingProperties.shaderGroupHandleSize, rayTracingProperties.shaderGroupHandleSize, shaderBindingTableSize
     };
     VkStridedBufferRegionKHR rayCallSBT = {
         VK_NULL_HANDLE, 0, 0, 0
