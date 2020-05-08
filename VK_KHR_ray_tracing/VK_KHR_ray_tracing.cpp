@@ -189,6 +189,7 @@ MappedBuffer CreateMappedBuffer(void* srcData, uint32_t byteLength) {
     VkBufferCreateInfo bufferInfo;
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.pNext = nullptr;
+    bufferInfo.flags = 0;
     bufferInfo.size = byteLength;
     bufferInfo.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
