@@ -615,7 +615,7 @@ int main() {
         accelerationCreateGeometryInfo.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
         accelerationCreateGeometryInfo.maxPrimitiveCount = indices.size() / 3;
         accelerationCreateGeometryInfo.indexType = VK_INDEX_TYPE_UINT32;
-        accelerationCreateGeometryInfo.maxVertexCount = vertices.size();
+        accelerationCreateGeometryInfo.maxVertexCount = vertices.size() / 3;
         accelerationCreateGeometryInfo.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
         accelerationCreateGeometryInfo.allowsTransforms = VK_FALSE;
 
