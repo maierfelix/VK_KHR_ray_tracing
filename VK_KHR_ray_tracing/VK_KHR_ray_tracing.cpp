@@ -1170,7 +1170,7 @@ int main() {
 
         shaderBindingTable = {};
         shaderBindingTableSize =
-            shaderBindingTableGroupCount * rayTracingProperties.shaderGroupHandleSize;
+            shaderBindingTableGroupCount * rayTracingProperties.shaderGroupBaseAlignment;
 
         VkBufferCreateInfo bufferInfo;
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -1199,12 +1199,24 @@ int main() {
         ASSERT_VK_RESULT(
             vkBindBufferMemory(device, shaderBindingTable.buffer, shaderBindingTable.memory, 0));
 
-        void* dstData;
+        uint8_t* dstData;
         ASSERT_VK_RESULT(
-            vkMapMemory(device, shaderBindingTable.memory, 0, shaderBindingTableSize, 0, &dstData));
+            vkMapMemory(device, shaderBindingTable.memory, 0, shaderBindingTableSize, 0, 
+                        reinterpret_cast<void**>(&dstData)));
 
-        vkGetRayTracingShaderGroupHandlesKHR(device, pipeline, 0, shaderBindingTableGroupCount,
-                                             shaderBindingTableSize, dstData);
+        // Store in temporary vector
+        std::vector<uint8_t> shaderHandleStorage(shaderBindingTableSize);
+        vkGetRayTracingShaderGroupHandlesKHR(device, pipeline, 0, shaderBindingTableGroupCount, 
+                                             shaderBindingTableSize, shaderHandleStorage.data());
+
+        // Write the handles in the SBT regarding rayTracingProperties.shaderGroupBaseAlignment
+        for(uint32_t g = 0; g < shaderBindingTableGroupCount; g++)
+        {
+            memcpy(dstData, shaderHandleStorage.data() + g * rayTracingProperties.shaderGroupHandleSize, 
+                   rayTracingProperties.shaderGroupHandleSize);
+            dstData += rayTracingProperties.shaderGroupBaseAlignment;
+        }
+
         vkUnmapMemory(device, shaderBindingTable.memory);
     }
 
@@ -1302,10 +1314,10 @@ int main() {
         shaderBindingTable.buffer, 0, rayTracingProperties.shaderGroupHandleSize, shaderBindingTableSize
     };
     VkStridedBufferRegionKHR rayMissSBT = {
-        shaderBindingTable.buffer, 2 * rayTracingProperties.shaderGroupHandleSize, rayTracingProperties.shaderGroupHandleSize, shaderBindingTableSize
+        shaderBindingTable.buffer, 2 * rayTracingProperties.shaderGroupBaseAlignment, rayTracingProperties.shaderGroupHandleSize, shaderBindingTableSize
     };
     VkStridedBufferRegionKHR rayHitSBT = {
-        shaderBindingTable.buffer, 1 * rayTracingProperties.shaderGroupHandleSize, rayTracingProperties.shaderGroupHandleSize, shaderBindingTableSize
+        shaderBindingTable.buffer, 1 * rayTracingProperties.shaderGroupBaseAlignment, rayTracingProperties.shaderGroupHandleSize, shaderBindingTableSize
     };
     VkStridedBufferRegionKHR rayCallSBT = {
         VK_NULL_HANDLE, 0, 0, 0
