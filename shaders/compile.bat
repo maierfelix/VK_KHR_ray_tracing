@@ -1,3 +1,3 @@
-start "" /d "%cd%" "%cd%/../third_party/glslang/glslangValidatorWindows" -V ray-generation.rgen   -o ray-generation.spv
-start "" /d "%cd%" "%cd%/../third_party/glslang/glslangValidatorWindows" -V ray-closest-hit.rchit -o ray-closest-hit.spv
-start "" /d "%cd%" "%cd%/../third_party/glslang/glslangValidatorWindows" -V ray-miss.rmiss        -o ray-miss.spv
+start "" /d "%cd%" "%VULKAN_SDK%/bin/glslangValidator" --target-env vulkan1.2 -V ray-generation.rgen   -o ray-generation.spv
+start "" /d "%cd%" "%VULKAN_SDK%/bin/glslangValidator" --target-env vulkan1.2 -V ray-closest-hit.rchit -o ray-closest-hit.spv
+start "" /d "%cd%" "%VULKAN_SDK%/bin/glslangValidator" --target-env vulkan1.2 -V ray-miss.rmiss        -o ray-miss.spv
